@@ -10,6 +10,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -40,7 +42,8 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    EditText tagId, tagSignature, publicKeyNxp, readResult;
+    Button btn2, btn3, btn4, btn5;
+    EditText tagId, publicKeyNxp, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
     boolean signatureVerfied = false;
@@ -53,11 +56,195 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         setContentView(R.layout.activity_main);
 
         tagId = findViewById(R.id.etVerifyTagId);
-        tagSignature = findViewById(R.id.etVerifySignature);
         publicKeyNxp = findViewById(R.id.etVerifyPublicKey);
         readResult = findViewById(R.id.etVerifyResult);
-
+        btn2 = findViewById(R.id.btn2);
+        btn3 = findViewById(R.id.btn3);
+        btn4 = findViewById(R.id.btn4);
+        btn5 = findViewById(R.id.btn5);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
+
+        btn2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // create application
+                // first select application 00 00 00
+                byte selectMasterfileApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectMasterfileApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+                // selectMasterfileApplicationResponse length: 2 data: 9100
+
+                // get master key settings
+                byte getKeySettingsCommand = (byte) 0x45;
+                byte[] getKeySettingsResponse = new byte[0];
+                try {
+                    getKeySettingsResponse = isoDep.transceive(wrapMessage(getKeySettingsCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getKeySettingsResponse", getKeySettingsResponse));
+                // getKeySettingsResponse length: 4 data: 0f 01 9100
+                //                                        0f = key settings
+                //                                           01 = max number of keys
+
+                // create an application
+                byte createApplicationCommand = (byte) 0xca;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
+                byte applicationMasterKeySettings = (byte) 0x0f;
+                byte numberOfKeys = 0x03; // this value is for keys without any encryption, see Desfire EV Protocol
+                byte[] createApplicationParameters = new byte[5];
+                System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
+                createApplicationParameters[3] = applicationMasterKeySettings;
+                createApplicationParameters[4] = numberOfKeys;
+                writeToUiAppend(readResult, printData("createApplicationParameters", createApplicationParameters));
+
+                byte[] createApplicationResponse = new byte[0];
+                try {
+                    createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("createApplicationResponse", createApplicationResponse));
+                // createApplicationResponse length: 2 data: 9100                                                9100
+
+            }
+        });
+
+        btn3.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // list applications
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+
+                // get application ids
+                byte getApplicationIdsCommand = (byte) 0x6a;
+                byte[] getApplicationIdsResponse = new byte[0];
+                try {
+                    getApplicationIdsResponse = isoDep.transceive(wrapMessage(getApplicationIdsCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getApplicationIdsResponse", getApplicationIdsResponse));
+                // getApplicationIdsResponse length: 2 data: 9100 = no applications on card
+                // getApplicationIdsResponse length: 5 data: a1a2a3 9100
+
+                // todo if there are more than 7 app on card there is an af response to get more data
+
+
+            }
+        });
+
+        btn4.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // select application and create a standard file
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
+                byte[] selectApplicationResponse = new byte[0];
+                try {
+                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
+
+                // we create a standard file within the application
+                byte createStandardFileCommand = (byte) 0xcd;
+                // CD | File No | Comms setting byte | Access rights (2 bytes) | File size (3 bytes)
+                byte fileNumber = (byte) 07;
+                byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
+                /*
+                M0775031 DESFIRE
+                Plain Communication = 0;
+                Plain communication secured by DES/3DES MACing = 1;
+                Fully DES/3DES enciphered communication = 3;
+                 */
+                byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
+                /*
+                There are four different Access Rights (2 bytes for each file) stored for each file within
+                each application:
+                - Read Access
+                - Write Access
+                - Read&Write Access
+                - ChangeAccessRights
+                 */
+                byte[] fileSize = new byte[]{(byte) 0x20, (byte) 0xf00, (byte) 0x00}; // 32 bytes
+                byte[] createStandardFileParameters = new byte[7];
+                createStandardFileParameters[0] = fileNumber;
+                createStandardFileParameters[1] = commSettingsByte;
+                System.arraycopy(accessRights, 0, createStandardFileParameters, 2, 2);
+                System.arraycopy(fileSize, 0, createStandardFileParameters, 4, 3);
+
+                writeToUiAppend(readResult, printData("createStandardFileParameters", createStandardFileParameters));
+                // createStandardFileParameters length: 7 data: 0700eeee200000
+
+                byte[] createStandardFileResponse = new byte[0];
+                try {
+                    createStandardFileResponse = isoDep.transceive(wrapMessage(createStandardFileCommand, createStandardFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("createStandardFileResponse", createStandardFileResponse));
+                // createStandardFileResponse length: 2 data: 9100
+            }
+        });
+
+        btn5.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // get the free memory on the card
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+
+                // get the free memory on the card
+                byte getFreeMemoryCommand = (byte) 0x6e;
+                byte[] getFreeMemoryResponse = new byte[0];
+                try {
+                    getFreeMemoryResponse = isoDep.transceive(wrapMessage(getFreeMemoryCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getFreeMemoryResponse", getFreeMemoryResponse));
+                // getFreeMemoryResponse length: 5 data: 400800 9100 (EV1 2K after create 1 app + 1 32 byte file)
+                // getFreeMemoryResponse length: 5 data: 000a00 9100 (EV2 4K empty)
+                // 400800 = 00 08 40 =
+                int length;
+
+
+            }
+        });
 
     }
 
@@ -255,6 +442,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     }
 
     // https://github.com/codebutler/farebot/blob/master/farebot-card-desfire/src/main/java/com/codebutler/farebot/card/desfire/DesfireProtocol.java
+
+    private int byteArrayLength3InversedToInt(byte[] data) {
+        return (data[2] & 0xff) << 16 | (data[1] & 0xff) << 8 | (data[0] & 0xff);
+    }
+
+    private int byteArrayLength3NonInversedToInt(byte[] data) {
+        return (data[0] & 0xff) << 16 | (data[1] & 0xff) << 8 | (data[2] & 0xff);
+    }
 
 
     public VersionInfo getVersionInfo() throws Exception {

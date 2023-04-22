@@ -1,4 +1,29 @@
-# NFC Verify the originality signature of NXP's Mifare Desfire EV2
+# NFC NXP Mifare Desfire EV1 Playground
+
+Commands in Product Specification Mifare DESFire MF3 IC D40: https://neteril.org/files/M075031_desfire.pdf
+
+https://www.mifare.net/support/forum/topic/cannot-create-desfire-ev1-aplication-with-aes-key/
+```plaintext
+The general procedure for personalize a blank MIFARE DESFire EV1 is as follow:
+
+Authenticate with the PICC Master Key (“00…00”).
+
+Create an application for your files. If you expect to use e.g. two keys, set as parameter three keys! In your case is key #0 the Application Master key, #1, the key for read access and #3 the key for write access.
+Select to your application (key #0 is not the PICC Master Key anymore, now it is the Application Master Key).
+Now you can create the files or create/change the keys.
+
+Create the a file with key #1 as read access, #2 as write access and maybe #0 as change access.
+
+Change the application keys:
+First authenticate to key #0 with the default key 00…00.
+
+Change the key #0 from default 00…00 to the new key value.
+
+Repeat it for the other keys, first authenticate to the key with the default key, and then change the key value.
+
+At the end change the PICC Master Key.
+```
+
 
 This app is verifying the ("originality") signature of a Mifare Desfire EV2 tag.
 
