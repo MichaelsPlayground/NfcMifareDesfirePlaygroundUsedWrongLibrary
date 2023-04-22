@@ -42,7 +42,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5;
+    Button btn2, btn3, btn4, btn5, btn6, btn7;
     EditText tagId, publicKeyNxp, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
@@ -62,6 +62,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn3 = findViewById(R.id.btn3);
         btn4 = findViewById(R.id.btn4);
         btn5 = findViewById(R.id.btn5);
+        btn6 = findViewById(R.id.btn6);
+        btn7 = findViewById(R.id.btn7);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -115,7 +117,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 writeToUiAppend(readResult, printData("createApplicationResponse", createApplicationResponse));
                 // createApplicationResponse length: 2 data: 9100                                                9100
-
+                // second try: data 91de = duplicate error (application is existing)
             }
         });
 
@@ -238,9 +240,40 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 writeToUiAppend(readResult, printData("getFreeMemoryResponse", getFreeMemoryResponse));
                 // getFreeMemoryResponse length: 5 data: 400800 9100 (EV1 2K after create 1 app + 1 32 byte file)
-                // getFreeMemoryResponse length: 5 data: 000a00 9100 (EV2 4K empty)
-                // 400800 = 00 08 40 =
+                // getFreeMemoryResponse length: 5 data: 000a00 9100 (EV2 2K empty)
+                // getFreeMemoryResponse length: 5 data: 001400 9100 (EV2 4K empty)
+                // 400800 = 00 08 40 = 2112 bytes
+                // 000a00 = 00 0a 00 = 2560 bytes
+                // 001400 = 00 14 00 = 5120 bytes
                 int length;
+                if (getFreeMemoryResponse.length > 2) {
+                    byte[] lengthBytes = Arrays.copyOf(getFreeMemoryResponse, getFreeMemoryResponse.length - 2);
+                    length = byteArrayLength3InversedToInt(lengthBytes);
+                    writeToUiAppend(readResult, "free memory on card: " + length);
+                }
+            }
+        });
+
+        btn6.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // red from file
+                // first select application
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+
+                // now read from file
+                byte readStandardFileCommand = (byte) 0xbd;
+                byte fileNumber = (byte) 07;
 
 
             }
