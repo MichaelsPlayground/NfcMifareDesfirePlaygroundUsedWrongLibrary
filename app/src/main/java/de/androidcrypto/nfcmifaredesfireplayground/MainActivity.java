@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -21,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.AccessControlException;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
@@ -42,8 +44,8 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7;
-    EditText tagId, publicKeyNxp, readResult;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9;
+    EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
     boolean signatureVerfied = false;
@@ -56,7 +58,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         setContentView(R.layout.activity_main);
 
         tagId = findViewById(R.id.etVerifyTagId);
-        publicKeyNxp = findViewById(R.id.etVerifyPublicKey);
+        dataToWrite = findViewById(R.id.etDataToWrite);
         readResult = findViewById(R.id.etVerifyResult);
         btn2 = findViewById(R.id.btn2);
         btn3 = findViewById(R.id.btn3);
@@ -64,6 +66,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn5 = findViewById(R.id.btn5);
         btn6 = findViewById(R.id.btn6);
         btn7 = findViewById(R.id.btn7);
+        btn8 = findViewById(R.id.btn8);
+        btn9 = findViewById(R.id.btn9);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -257,8 +261,103 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn6.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // red from file
+                // read from file
                 // first select application
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
+                byte[] selectApplicationResponse = new byte[0];
+                try {
+                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
+
+                // now read from file
+                byte readStandardFileCommand = (byte) 0xbd;
+                byte fileNumber = (byte) 07;
+                byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // no offset
+                byte[] length = new byte[]{(byte) 0x20, (byte) 0xf00, (byte) 0x00}; // 32 bytes
+                byte[] readStandardFileParameters = new byte[7];
+                readStandardFileParameters[0] = fileNumber;
+                System.arraycopy(offset, 0, readStandardFileParameters, 1, 3);
+                System.arraycopy(length, 0, readStandardFileParameters, 4, 3);
+
+                writeToUiAppend(readResult, printData("readStandardFileParameters", readStandardFileParameters));
+                // createStandardFileParameters length: 7 data: 0700eeee200000
+
+                byte[] readStandardFileResponse = new byte[0];
+                try {
+                    readStandardFileResponse = isoDep.transceive(wrapMessage(readStandardFileCommand, readStandardFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("readStandardFileResponse", readStandardFileResponse));
+                writeToUiAppend(readResult,  "readStandardFileResponse: " + new String(readStandardFileResponse, StandardCharsets.UTF_8));
+                // readStandardFileResponse length: 2 data: 9100
+            }
+        });
+
+        btn7.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String data = dataToWrite.getText().toString();
+                if (TextUtils.isEmpty(data)) {
+                    Toast.makeText(getApplicationContext(),
+                            "please enter some data to write on tag",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // write to file
+                // first select application
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
+                byte[] selectApplicationResponse = new byte[0];
+                try {
+                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
+
+                // now write to file
+                byte[] dataByte = data.getBytes(StandardCharsets.UTF_8);
+                byte writeStandardFileCommand = (byte) 0x3d;
+                byte fileNumber = (byte) 07;
+                int numberOfBytes = dataByte.length;
+                byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // no offset
+                byte[] length = new byte[]{(byte) (numberOfBytes & 0xFF), (byte) 0xf00, (byte) 0x00}; // 32 bytes
+                byte[] writeStandardFileParameters = new byte[(7 + dataByte.length)]; // todo if encrypted we need to append the CRC
+                writeStandardFileParameters[0] = fileNumber;
+                System.arraycopy(offset, 0, writeStandardFileParameters, 1, 3);
+                System.arraycopy(length, 0, writeStandardFileParameters, 4, 3);
+                System.arraycopy(dataByte, 0, writeStandardFileParameters, 7, dataByte.length);
+
+                writeToUiAppend(readResult, printData("writeStandardFileParameters", writeStandardFileParameters));
+                // writeStandardFileParameters length: 19 data: 07000000200000546865206c617a7920646f67
+
+                byte[] writeStandardFileResponse = new byte[0];
+                try {
+                    writeStandardFileResponse = isoDep.transceive(wrapMessage(writeStandardFileCommand, writeStandardFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("writeStandardFileResponse", writeStandardFileResponse));
+                // writeStandardFileResponse length: 2 data: 9100
+            }
+        });
+
+        btn8.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // format the tag
+
                 // first select application 00 00 00
                 byte selectApplicationCommand = (byte) 0x5a;
                 byte[] masterfileApplication = new byte[3]; // 00 00 00
@@ -271,14 +370,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
 
-                // now read from file
-                byte readStandardFileCommand = (byte) 0xbd;
-                byte fileNumber = (byte) 07;
-
-
             }
         });
-
     }
 
     // This method is run in another thread when a card is discovered
