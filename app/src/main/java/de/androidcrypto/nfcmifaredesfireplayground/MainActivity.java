@@ -165,7 +165,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // select application and create a standard file
                 byte selectApplicationCommand = (byte) 0x5a;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3}; // AID is A3A2A1
                 byte[] selectApplicationResponse = new byte[0];
                 try {
                     selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
@@ -356,7 +356,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn8.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // format the tag
+                // create des encrypted application
+                writeToUiAppend(readResult, "*** create a DES encrypted application ***");
 
                 // first select application 00 00 00
                 byte selectApplicationCommand = (byte) 0x5a;
@@ -369,6 +370,37 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
                 writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+
+                // create a DES encrypted application
+                byte createApplicationCommand = (byte) 0xca;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa4}; // aid is A4A2A1
+                byte applicationMasterKeySettings = (byte) 0x0f;
+                /*
+                The app setting byte contains:
+                bit 0 - 3 Number of keys, 1 to 14
+                bit 6     Use 3K3DES (if not AES), else DES/3DES (if not AES)
+                bit 7     Use AES (set bit 6 to 0)
+                 */
+                byte numberOfKeys = 0x02; // this value is for keys without any encryption, see Desfire EV Protocol
+
+
+
+
+                byte[] createApplicationParameters = new byte[5];
+                System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
+                createApplicationParameters[3] = applicationMasterKeySettings;
+                createApplicationParameters[4] = numberOfKeys;
+                writeToUiAppend(readResult, printData("createApplicationParameters", createApplicationParameters));
+
+                byte[] createApplicationResponse = new byte[0];
+                try {
+                    createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("createApplicationResponse", createApplicationResponse));
+
 
             }
         });
