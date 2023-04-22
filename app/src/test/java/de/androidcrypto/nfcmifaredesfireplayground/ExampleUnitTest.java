@@ -1,4 +1,4 @@
-package de.androidcrypto.nfcmifaredesfireverifyoriginalitysignature;
+package de.androidcrypto.nfcmifaredesfireplayground;
 
 import org.junit.Test;
 

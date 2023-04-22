@@ -6,7 +6,7 @@ android {
     compileSdk 33
 
     defaultConfig {
-        applicationId "de.androidcrypto.nfcmifaredesfireverifyoriginalitysignature"
+        applicationId "de.androidcrypto.nfcmifaredesfireplayground"
         minSdk 21
         targetSdk 33
         versionCode 1
