@@ -91,6 +91,15 @@ public class DESFireEV1 {
 		reset();
 	}
 
+	/** Ciphers supported by DESFire EV1. */
+	public enum DesfireKeyType {
+		NONE,
+		DES,
+		TDES,
+		TKTDES,
+		AES;
+	}
+
 	/**
 	 * Reset the attributes of this instance to their default values.
 	 * Called when the authentication status is changed, such as after a
@@ -2546,6 +2555,8 @@ public class DESFireEV1 {
 	}
 
 	private byte[] transmit(byte[] command) throws IOException {
+		// todo remove
+		// System.out.println("*** DESFireEV1 transmit command: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(command) + " adapter: " + adapter.toString());
 		return adapter.transceive(command);
 	}
 

@@ -24,6 +24,9 @@ Repeat it for the other keys, first authenticate to the key with the default key
 At the end change the PICC Master Key.
 ```
 
+https://github.com/andrade/nfcjlib
+
+
 
 This app is verifying the ("originality") signature of a Mifare Desfire EV2 tag.
 

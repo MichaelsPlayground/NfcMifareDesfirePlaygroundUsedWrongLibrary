@@ -1,5 +1,7 @@
 package de.androidcrypto.nfcmifaredesfireplayground;
 
+import static com.github.skjolber.desfire.libfreefare.MifareDesfire.mifare_desfire_tag_new;
+
 import android.content.Context;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
@@ -18,6 +20,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.github.skjolber.desfire.ev1.model.DesfireTag;
+import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
+import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
+import com.github.skjolber.desfire.libfreefare.MifareTag;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,6 +49,9 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import nfcjlib.core.DESFireEV1;
+
+
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
     Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9;
@@ -51,6 +61,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     boolean signatureVerfied = false;
     //NfcA nfcA;
     IsoDep isoDep;
+
+    // vars for enhanced functions using libraries from https://github.com/skjolber/desfire-tools-for-android
+    private MifareTag nfcjTag;
+    private DesfireTag desfireTag;
+    private DefaultIsoDepAdapter defaultIsoDepAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -357,49 +372,78 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // create des encrypted application
-                writeToUiAppend(readResult, "*** create a DES encrypted application ***");
+                writeToUiAppend(readResult, "*** create a TKDES encrypted application ***");
 
-                // first select application 00 00 00
-                byte selectApplicationCommand = (byte) 0x5a;
-                byte[] masterfileApplication = new byte[3]; // 00 00 00
-                byte[] selectMasterfileApplicationResponse = new byte[0];
+                DESFireEV1 desfire = new DESFireEV1();
                 try {
-                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
-                } catch (Exception e) {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[] {0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+                    // authenticate: assume default key with cipher AES
+                    // for KeyType see com.github.skjolber.desfire.ev1.model.key.DESFireKeyType.java
+                    // NONE(0), DES(1), TDES(2), TKTDES(3), AES(4);
+
+                    //desfire.authenticate(new byte[16], (byte) 0x00, KeyType.AES);
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create application (0x42 means 3K3DES cipher and two application keys)
+                    writeToUiAppend(readResult, "create application with TKDES authentication");
+                    byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.TKTDES, (byte) 0x02);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+                    if (!createApplicationSuccess) {
+                        writeToUiAppend(readResult,"createApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // select application
+                    boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
+                    writeToUiAppend(readResult, "selectApplicationSuccess: " + selectApplicationSuccess);
+                    if (!selectApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // authenticate the new application
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    boolean authenticateApplicationSuccess = desfire.authenticate(new byte[24], (byte) 0x00, DESFireEV1.DesfireKeyType.TKTDES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // get files IDs (none found because none were created)
+                    byte[] ret = desfire.getFileIds();
+                    if (ret == null) {
+                        writeToUiAppend(readResult, "File IDs returned null");
+                    }
+                    else {
+                        writeToUiAppend(readResult, "File IDs returned: " + Utils.bytesToHex(ret));
+                    }
+
+                    writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
+
+
+
+
+                } catch (IOException e) {
                     //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
                 }
-                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
-
-                // create a DES encrypted application
-                byte createApplicationCommand = (byte) 0xca;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa4}; // aid is A4A2A1
-                byte applicationMasterKeySettings = (byte) 0x0f;
-                /*
-                The app setting byte contains:
-                bit 0 - 3 Number of keys, 1 to 14
-                bit 6     Use 3K3DES (if not AES), else DES/3DES (if not AES)
-                bit 7     Use AES (set bit 6 to 0)
-                 */
-                byte numberOfKeys = 0x02; // this value is for keys without any encryption, see Desfire EV Protocol
-
-
-
-
-                byte[] createApplicationParameters = new byte[5];
-                System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
-                createApplicationParameters[3] = applicationMasterKeySettings;
-                createApplicationParameters[4] = numberOfKeys;
-                writeToUiAppend(readResult, printData("createApplicationParameters", createApplicationParameters));
-
-                byte[] createApplicationResponse = new byte[0];
-                try {
-                    createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("createApplicationResponse", createApplicationResponse));
 
 
             }
@@ -443,8 +487,20 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     readResult.setBackgroundColor(getResources().getColor(R.color.white));
                 });
 
+                // enhanced function
+                DefaultIsoDepWrapper isoDepWrapper = new DefaultIsoDepWrapper(isoDep);
+                defaultIsoDepAdapter = new DefaultIsoDepAdapter(isoDepWrapper, false);
+
+
                 //nfcA.connect();
                 isoDep.connect();
+
+                // enhanced functions
+                nfcjTag = mifare_desfire_tag_new();
+                nfcjTag.setActive(1);
+                nfcjTag.setIo(defaultIsoDepAdapter);
+                desfireTag = new DesfireTag();
+
 
                 System.out.println("*** tagId: " + Utils.bytesToHex(tag.getId()));
 
