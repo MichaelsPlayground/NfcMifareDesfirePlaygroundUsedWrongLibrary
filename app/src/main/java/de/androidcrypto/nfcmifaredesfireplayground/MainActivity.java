@@ -24,6 +24,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.github.skjolber.desfire.ev1.model.DesfireTag;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
+import com.github.skjolber.desfire.ev1.model.file.DesfireFileCommunicationSettings;
 import com.github.skjolber.desfire.libfreefare.MifareTag;
 
 import java.io.ByteArrayOutputStream;
@@ -373,7 +374,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // create des encrypted application
                 writeToUiAppend(readResult, "*** create a TKDES encrypted application ***");
-
+                // taken from https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/core/DESFireEV1.java
+                // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/ExampleCreate.java
                 DESFireEV1 desfire = new DESFireEV1();
                 try {
 
@@ -404,10 +406,25 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
                     boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.TKTDES, (byte) 0x02);
                     writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+
+                    byte[] skey, appKey, aid, payload;
+                    byte amks, nok, fileNo1, fileNo2, fileNo3, cs, ar1, ar2;
+                    Integer val;
+/*
+                    // 5 keys, nok 45 is TKDS
+                    byte[] APPLICATION_ID = new byte[] {0x04, 0x06, 0x07};
+                    amks = 0x0F;
+                    nok = (byte) 0x05;
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, amks, DESFireEV1.DesfireKeyType.TDES, nok);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+*/
+                    // no success is given also when the application already exists, so the following code is commented out
+                    /*
                     if (!createApplicationSuccess) {
                         writeToUiAppend(readResult,"createApplication NOT Success, aborted");
                         return;
                     }
+                     */
 
                     // select application
                     boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
@@ -419,6 +436,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                     // authenticate the new application
                     // authenticate inside application with key 0x00 and cipher 3K3DES
+                    // second parameter is saying: (RW is set to 0x3: grants access to credit/getValue operations)
                     boolean authenticateApplicationSuccess = desfire.authenticate(new byte[24], (byte) 0x00, DESFireEV1.DesfireKeyType.TKTDES);
                     writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
                     if (!authenticateApplicationSuccess) {
@@ -426,6 +444,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         return;
                     }
 
+                    /*
                     // get files IDs (none found because none were created)
                     byte[] ret = desfire.getFileIds();
                     if (ret == null) {
@@ -435,19 +454,253 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                         writeToUiAppend(readResult, "File IDs returned: " + Utils.bytesToHex(ret));
                     }
 
+                     */
+
+                    // add a file and write to it
+                    // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/MDF1.java
+
+                    /**
+                     * Sample application with a value file using a MIFARE DESFire EV1.
+                     * Create an application with the chosen cipher,
+                     * three value files, increase the stored values and retrieve those
+                     * values from the card. There is one value file created for each of the
+                     * possible communication settings (plain=0, maced=1, enciphered=3).
+                     * <p>
+                     * The card is assumed to have the PICC master key set to DES with
+                     * all 16 bytes cleared.
+                     *
+                     * @author	Daniel Andrade
+                     * @version	9.9.2013, 0.4
+                     */
+
+
+                    // create a value file in the new application: fileNo=4, cs=0
+                    fileNo1 = 0x04;
+                    cs = 0x00; // communication settings
+                    ar1 = 0x00;  // RW|CAR // access rights // all for key 00 // Read&Write ChangeAccessRights
+                    ar2 = 0x00;  // R|W    // access rights // all for key 00 // Read Write
+                    payload = new byte[] {
+                            fileNo1, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 1 not success, aborted");
+                        return;
+                    }
+
+                    // create a value file in the new application: fileNo=5, cs=1
+                    fileNo2 = 0x05;
+                    cs = 0x01;
+                    ar1 = 0x00;  // RW|CAR
+                    ar2 = 0x00;  // R|W
+                    payload = new byte[] {
+                            fileNo2, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 2 not success, aborted");
+                        return;
+                    }
+
+                    // create a value file in the new application: fileNo=6, cs=3
+                    fileNo3 = 0x06;
+                    cs = 0x03;
+                    ar1 = 0x00;  // RW|CAR
+                    ar2 = 0x00;  // R|W
+                    payload = new byte[] {
+                            fileNo3, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 3 not success, aborted");
+                        return;
+                    }
+
+
+                    // increase the value stored in the last value file (twice!):
+                    // - requires preceding authentication with RW key (done); and a
+                    // - commit transaction after the credit operation
+                    if (!desfire.credit(fileNo1, 7)) {
+                        writeToUiAppend(readResult, "desfire.credit 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo1, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo2, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 2 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo2, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 2 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 21 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo3, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 3 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo3, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 3 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 3 not success, aborted");
+                        return;
+                    }
+
+                    // read the stored value ( = initial value + credit + credit )
+                    val = desfire.getValue(fileNo1);
+                    if (val == null) {
+                        writeToUiAppend(readResult, "desfire.getValue 1 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=4, cs=0) is " + val.intValue());
+                    val = desfire.getValue(fileNo2);
+                    if (val == null)
+                    {
+                        writeToUiAppend(readResult, "desfire.getValue 2 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=5, cs=1) is " + val.intValue());
+                    val = desfire.getValue(fileNo3);
+                    if (val == null)
+                    {
+                        writeToUiAppend(readResult, "desfire.getValue 3 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=6, cs=3) is " + val.intValue());
+
+
                     writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
-
-
-
 
                 } catch (IOException e) {
                     //throw new RuntimeException(e);
                     writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
 
 
             }
         });
+
+        btn9.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // create des encrypted application
+                writeToUiAppend(readResult, "*** create a AES encrypted application ***");
+                // taken from https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/core/DESFireEV1.java
+                // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/ExampleCreate.java
+                DESFireEV1 desfire = new DESFireEV1();
+                try {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[] {0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+                    // authenticate: assume default key with cipher AES
+                    // for KeyType see com.github.skjolber.desfire.ev1.model.key.DESFireKeyType.java
+                    // NONE(0), DES(1), TDES(2), TKTDES(3), AES(4);
+
+                    //desfire.authenticate(new byte[16], (byte) 0x00, KeyType.AES);
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create application AES cipher and two application keys
+                    writeToUiAppend(readResult, "create application with AES authentication");
+                    byte[] APPLICATION_ID = new byte[] {0x09, 0x05, 0x07};
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.AES, (byte) 0x02);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+
+                    // authenticate the new application
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    boolean authenticateApplicationSuccess = desfire.authenticate(new byte[16], (byte) 0x00, DESFireEV1.DesfireKeyType.AES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // select application
+                    boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
+                    writeToUiAppend(readResult, "selectApplicationSuccess: " + selectApplicationSuccess);
+                    if (!selectApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    	 /* @param payload	7-byte array, with the following content:
+	                    * 					<br>file number (1 byte),
+	                    * 					<br>communication settings (1 byte),
+	                    * 					<br>access rights (2 bytes),
+	                    * 					<br>file size (3 bytes)
+                    */
+                    // create a value file in the new application: fileNo=4, cs=0
+                    byte fileNo1 = 0x04;
+
+                    byte cs = 0x03; // communication settings // 03 = full encrypted
+                    byte ar1 = 0x00;  // RW|CAR // access rights // all for key 00 // Read&Write ChangeAccessRights
+                    byte ar2 = 0x00;  // R|W    // access rights // all for key 00 // Read Write
+                    byte[] payload = new byte[] {
+                            fileNo1, cs, ar1, ar2,
+                            (byte) 0x20, 0, 0 // files size 32 byte
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createStandardFile not success, aborted");
+                        return;
+                    } else {
+                        writeToUiAppend(readResult, "desfire.createStandardFile success");
+                    }
+
+                    writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+
+            }
+        });
+
     }
 
     // This method is run in another thread when a card is discovered
