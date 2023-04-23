@@ -5,9 +5,7 @@ import static com.github.skjolber.desfire.libfreefare.MifareDesfire.mifare_desfi
 import android.content.Context;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
-import android.nfc.TagLostException;
 import android.nfc.tech.IsoDep;
-import android.nfc.tech.NfcA;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -24,26 +22,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.github.skjolber.desfire.ev1.model.DesfireTag;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
-import com.github.skjolber.desfire.ev1.model.file.DesfireFileCommunicationSettings;
 import com.github.skjolber.desfire.libfreefare.MifareTag;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.AccessControlException;
-import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.SignatureException;
-import java.security.spec.ECFieldFp;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPoint;
-import java.security.spec.ECPublicKeySpec;
-import java.security.spec.EllipticCurve;
-import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 
 import javax.crypto.Cipher;
@@ -53,7 +37,7 @@ import javax.crypto.spec.SecretKeySpec;
 import nfcjlib.core.DESFireEV1;
 
 
-public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
+public class MainActivityPartsEncryptedFail extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
     Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9;
     EditText tagId, dataToWrite, readResult;
@@ -372,211 +356,332 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn8.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // create value file
-                // select application
-                byte selectApplicationCommand = (byte) 0x5a;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3}; // AID is A3A2A1
-                byte[] selectApplicationResponse = new byte[0];
+                // create des encrypted application
+                writeToUiAppend(readResult, "*** create a TKDES encrypted application ***");
+                // taken from https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/core/DESFireEV1.java
+                // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/ExampleCreate.java
+                DESFireEV1 desfire = new DESFireEV1();
                 try {
-                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
-                } catch (Exception e) {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[] {0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+                    // authenticate: assume default key with cipher AES
+                    // for KeyType see com.github.skjolber.desfire.ev1.model.key.DESFireKeyType.java
+                    // NONE(0), DES(1), TDES(2), TKTDES(3), AES(4);
+
+                    //desfire.authenticate(new byte[16], (byte) 0x00, KeyType.AES);
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create application (0x42 means 3K3DES cipher and two application keys)
+                    writeToUiAppend(readResult, "create application with TKDES authentication");
+                    byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.TKTDES, (byte) 0x02);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+
+                    byte[] skey, appKey, aid, payload;
+                    byte amks, nok, fileNo1, fileNo2, fileNo3, cs, ar1, ar2;
+                    Integer val;
+/*
+                    // 5 keys, nok 45 is TKDS
+                    byte[] APPLICATION_ID = new byte[] {0x04, 0x06, 0x07};
+                    amks = 0x0F;
+                    nok = (byte) 0x05;
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, amks, DESFireEV1.DesfireKeyType.TDES, nok);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+*/
+                    // no success is given also when the application already exists, so the following code is commented out
+                    /*
+                    if (!createApplicationSuccess) {
+                        writeToUiAppend(readResult,"createApplication NOT Success, aborted");
+                        return;
+                    }
+                     */
+
+                    // select application
+                    boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
+                    writeToUiAppend(readResult, "selectApplicationSuccess: " + selectApplicationSuccess);
+                    if (!selectApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // authenticate the new application
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    // second parameter is saying: (RW is set to 0x3: grants access to credit/getValue operations)
+                    boolean authenticateApplicationSuccess = desfire.authenticate(new byte[24], (byte) 0x00, DESFireEV1.DesfireKeyType.TKTDES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    /*
+                    // get files IDs (none found because none were created)
+                    byte[] ret = desfire.getFileIds();
+                    if (ret == null) {
+                        writeToUiAppend(readResult, "File IDs returned null");
+                    }
+                    else {
+                        writeToUiAppend(readResult, "File IDs returned: " + Utils.bytesToHex(ret));
+                    }
+
+                     */
+
+                    // add a file and write to it
+                    // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/MDF1.java
+
+                    /**
+                     * Sample application with a value file using a MIFARE DESFire EV1.
+                     * Create an application with the chosen cipher,
+                     * three value files, increase the stored values and retrieve those
+                     * values from the card. There is one value file created for each of the
+                     * possible communication settings (plain=0, maced=1, enciphered=3).
+                     * <p>
+                     * The card is assumed to have the PICC master key set to DES with
+                     * all 16 bytes cleared.
+                     *
+                     * @author	Daniel Andrade
+                     * @version	9.9.2013, 0.4
+                     */
+
+
+                    // create a value file in the new application: fileNo=4, cs=0
+                    fileNo1 = 0x04;
+                    cs = 0x00; // communication settings
+                    ar1 = 0x00;  // RW|CAR // access rights // all for key 00 // Read&Write ChangeAccessRights
+                    ar2 = 0x00;  // R|W    // access rights // all for key 00 // Read Write
+                    payload = new byte[] {
+                            fileNo1, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 1 not success, aborted");
+                        return;
+                    }
+
+                    // create a value file in the new application: fileNo=5, cs=1
+                    fileNo2 = 0x05;
+                    cs = 0x01;
+                    ar1 = 0x00;  // RW|CAR
+                    ar2 = 0x00;  // R|W
+                    payload = new byte[] {
+                            fileNo2, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 2 not success, aborted");
+                        return;
+                    }
+
+                    // create a value file in the new application: fileNo=6, cs=3
+                    fileNo3 = 0x06;
+                    cs = 0x03;
+                    ar1 = 0x00;  // RW|CAR
+                    ar2 = 0x00;  // R|W
+                    payload = new byte[] {
+                            fileNo3, cs, ar1, ar2,
+                            10, 0, 0, 0,  // lower limit: 10
+                            90, 0, 0, 0,  // upper limit: 90
+                            50, 0, 0, 0,  // initial value: 50
+                            0  // limitedCredit operation disabled
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createValueFile 3 not success, aborted");
+                        return;
+                    }
+
+
+                    // increase the value stored in the last value file (twice!):
+                    // - requires preceding authentication with RW key (done); and a
+                    // - commit transaction after the credit operation
+                    if (!desfire.credit(fileNo1, 7)) {
+                        writeToUiAppend(readResult, "desfire.credit 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo1, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 1 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo2, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 2 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo2, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 2 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 21 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo3, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 3 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.credit(fileNo3, 7))
+                    {
+                        writeToUiAppend(readResult, "desfire.credit 3 not success, aborted");
+                        return;
+                    }
+                    if (!desfire.commitTransaction())
+                    {
+                        writeToUiAppend(readResult, "desfire.commitTransaction 3 not success, aborted");
+                        return;
+                    }
+
+                    // read the stored value ( = initial value + credit + credit )
+                    val = desfire.getValue(fileNo1);
+                    if (val == null) {
+                        writeToUiAppend(readResult, "desfire.getValue 1 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=4, cs=0) is " + val.intValue());
+                    val = desfire.getValue(fileNo2);
+                    if (val == null)
+                    {
+                        writeToUiAppend(readResult, "desfire.getValue 2 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=5, cs=1) is " + val.intValue());
+                    val = desfire.getValue(fileNo3);
+                    if (val == null)
+                    {
+                        writeToUiAppend(readResult, "desfire.getValue 3 not success, aborted");
+                        return;
+                    }
+                    writeToUiAppend(readResult,"The stored value (fileNo=6, cs=3) is " + val.intValue());
+
+
+                    writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
+
+                } catch (IOException e) {
                     //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
-
-                // create a value file within the application
-                byte createValueFileCommand = (byte) 0xcc;
-                // CD | File No | Comms setting byte | Access rights (2 bytes) | File size (3 bytes)
-                byte fileNumber = (byte) 0x08;
-                byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
-                /*
-                M0775031 DESFIRE
-                Plain Communication = 0;
-                Plain communication secured by DES/3DES MACing = 1;
-                Fully DES/3DES enciphered communication = 3;
-                 */
-                byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
-                byte accessRightsRwCar = (byte) 0xee; // Read&Write Access & ChangeAccessRights
-                byte accessRightsRW = (byte) 0xee; // Read Access & Write Access
-                /*
-                There are four different Access Rights (2 bytes for each file) stored for each file within
-                each application:
-                - Read Access
-                - Write Access
-                - Read&Write Access
-                - ChangeAccessRights
-                 */
-
-                // create a value file in the new application: fileNo=6, cs=3
-                //ar1 = 0x00;  // RW|CAR
-                //ar2 = 0x00;  // R|W
-
-                byte[] createValueFileParameters = new byte[17]; // just to show the length
-                createValueFileParameters = new byte[] {
-                        fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
-                        10, 0, 0, 0,  // lower limit: 10
-                        90, 0, 0, 0,  // upper limit: 90
-                        50, 0, 0, 0,  // initial value: 50
-                        0  // limitedCredit operation disabled
-                };
-
-                writeToUiAppend(readResult, printData("createValueFileParameters", createValueFileParameters));
-                //
-
-                byte[] createValueFileResponse = new byte[0];
-                try {
-                    createValueFileResponse = isoDep.transceive(wrapMessage(createValueFileCommand, createValueFileParameters));
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
                 } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                    throw new RuntimeException(e);
                 }
-                writeToUiAppend(readResult, printData("createValueFileResponse", createValueFileResponse));
-                //
+
+
             }
         });
 
         btn9.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // increase value file
-
-                // select application
-                byte selectApplicationCommand = (byte) 0x5a;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3}; // AID is A3A2A1
-                byte[] selectApplicationResponse = new byte[0];
+                // create des encrypted application
+                writeToUiAppend(readResult, "*** create a AES encrypted application ***");
+                // taken from https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/core/DESFireEV1.java
+                // https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/ExampleCreate.java
+                DESFireEV1 desfire = new DESFireEV1();
                 try {
-                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
-                } catch (Exception e) {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[] {0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+                    // authenticate: assume default key with cipher AES
+                    // for KeyType see com.github.skjolber.desfire.ev1.model.key.DESFireKeyType.java
+                    // NONE(0), DES(1), TDES(2), TKTDES(3), AES(4);
+
+                    //desfire.authenticate(new byte[16], (byte) 0x00, KeyType.AES);
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create application AES cipher and two application keys
+                    writeToUiAppend(readResult, "create application with AES authentication");
+                    byte[] APPLICATION_ID = new byte[] {0x09, 0x05, 0x07};
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.AES, (byte) 0x02);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+
+                    // authenticate the new application
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    boolean authenticateApplicationSuccess = desfire.authenticate(new byte[16], (byte) 0x00, DESFireEV1.DesfireKeyType.AES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // select application
+                    boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
+                    writeToUiAppend(readResult, "selectApplicationSuccess: " + selectApplicationSuccess);
+                    if (!selectApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    	 /* @param payload	7-byte array, with the following content:
+	                    * 					<br>file number (1 byte),
+	                    * 					<br>communication settings (1 byte),
+	                    * 					<br>access rights (2 bytes),
+	                    * 					<br>file size (3 bytes)
+                    */
+                    // create a value file in the new application: fileNo=4, cs=0
+                    byte fileNo1 = 0x04;
+
+                    byte cs = 0x03; // communication settings // 03 = full encrypted
+                    byte ar1 = 0x00;  // RW|CAR // access rights // all for key 00 // Read&Write ChangeAccessRights
+                    byte ar2 = 0x00;  // R|W    // access rights // all for key 00 // Read Write
+                    byte[] payload = new byte[] {
+                            fileNo1, cs, ar1, ar2,
+                            (byte) 0x20, 0, 0 // files size 32 byte
+                    };
+                    if (!desfire.createValueFile(payload)) {
+                        writeToUiAppend(readResult, "desfire.createStandardFile not success, aborted");
+                        return;
+                    } else {
+                        writeToUiAppend(readResult, "desfire.createStandardFile success");
+                    }
+
+                    writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
+
+                } catch (IOException e) {
                     //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
-
-                // first read the existing value
-                // check access rights, here not necessary because of free access
-
-                byte readValueFileCommand = (byte) 0x6c;
-                byte fileNumber = (byte) 0x08;
-                byte[] readValueFileResponse = new byte[0];
-                /*
-                // DESFireEv1:
-                byte[] apdu = new byte[7];
-                apdu[0] = (byte) 0x90;
-                apdu[1] = readValueFileCommand;
-                apdu[2] = 0x00;
-                apdu[3] = 0x00;
-                apdu[4] = 0x01;
-                apdu[5] = fileNumber;
-                apdu[6] = 0x00;
-                */
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
                 } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
-
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
+                    throw new RuntimeException(e);
                 }
 
-                // now increase data
-                byte creditValueCommand = (byte) 0x0c;
-                int increaseValueBy3 = 3;
-                // convert credit amount to a 4 byte reversed array
-                byte[] creditValueAmountByte = intToLsb(increaseValueBy3);
-                byte[] creditValueFileParameters = new byte[5];
-                creditValueFileParameters[0] = fileNumber;
-                System.arraycopy(creditValueAmountByte, 0, creditValueFileParameters, 1, 4);
-                writeToUiAppend(readResult, printData("creditValueFileParameters", creditValueFileParameters));
-                byte[] creditValueFileResponse = new byte[0];
-                try {
-                    creditValueFileResponse = isoDep.transceive(wrapMessage(creditValueCommand, creditValueFileParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("creditValueFileResponse", creditValueFileResponse));
 
-                // don't forget to commit all changes
-                byte commitCommand = (byte) 0xc7;
-                byte[] commitResponse = new byte[0];
-                try {
-                    commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("commitResponse", commitResponse));
-
-                // now read again
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
-
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
-                }
-
-                // decrease value by 1
-                byte debitValueCommand = (byte) 0xdc;
-                int decreaseValueBy1 = 1;
-                // convert credit amount to a 4 byte reversed array
-                byte[] debitValueAmountByte = intToLsb(decreaseValueBy1);
-                byte[] debitValueFileParameters = new byte[5];
-                debitValueFileParameters[0] = fileNumber;
-                System.arraycopy(debitValueAmountByte, 0, debitValueFileParameters, 1, 4);
-                writeToUiAppend(readResult, printData("debitValueFileParameters", debitValueFileParameters));
-                byte[] debitValueFileResponse = new byte[0];
-                try {
-                    debitValueFileResponse = isoDep.transceive(wrapMessage(debitValueCommand, debitValueFileParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("debitValueFileResponse", debitValueFileResponse));
-
-                // don't forget to commit all changes
-                //byte commitCommand = (byte) 0xc7;
-                //byte[] commitResponse = new byte[0];
-                try {
-                    commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("commitResponse", commitResponse));
-
-                // now read again
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
-
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
-                }
             }
         });
 
@@ -797,30 +902,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         return (data[0] & 0xff) << 16 | (data[1] & 0xff) << 8 | (data[2] & 0xff);
     }
 
-    public static int byteArrayLength4NonInversedToInt(byte[] bytes) {
-        return bytes[0] << 24 | (bytes[1] & 0xFF) << 16 | (bytes[2] & 0xFF) << 8 | (bytes[3] & 0xFF);
-    }
-
-    //
-    public static int byteArrayLength4InversedToInt(byte[] bytes) {
-        return bytes[3] << 24 | (bytes[2] & 0xFF) << 16 | (bytes[1] & 0xFF) << 8 | (bytes[0] & 0xFF);
-    }
-
-    /**
-     * Convert int to byte array (LSB).
-     *
-     * @param value	the value to convert
-     * @return		4-byte byte array
-     */
-    // BitOp.java / nfcjLib
-    public static byte[] intToLsb(int value) {
-        byte[] a = new byte[4];
-        for (int i = 0; i < 4; i++) {
-            a[i] = (byte) (value & 0xFF);
-            value >>>= 8;
-        }
-        return a;
-    }
 
     public VersionInfo getVersionInfo() throws Exception {
         byte[] bytes = sendRequest(GET_VERSION_INFO);

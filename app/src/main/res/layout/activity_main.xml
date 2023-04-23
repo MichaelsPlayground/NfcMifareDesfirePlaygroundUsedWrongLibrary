@@ -136,7 +136,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginRight="8dp"
                 android:layout_weight="1"
-                android:text="create DES application" />
+                android:text="create value file" />
 
             <Button
                 android:id="@+id/btn9"
@@ -144,7 +144,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="8dp"
                 android:layout_weight="1"
-                android:text="xxx" />
+                android:text="incr value file" />
         </LinearLayout>
 
         <com.google.android.material.textfield.TextInputLayout
