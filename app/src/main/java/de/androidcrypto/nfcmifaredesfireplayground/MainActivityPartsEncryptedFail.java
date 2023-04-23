@@ -590,6 +590,33 @@ public class MainActivityPartsEncryptedFail extends AppCompatActivity implements
                     throw new RuntimeException(e);
                 }
 
+                // tested this code for deletion of an application
+                // before running the code I selected the application to delete
+                /**
+                 * start of the authentication
+                 */
+
+                // the application 05 06 07 was created using TKDES
+                /*
+                DESFireEV1 desfire = new DESFireEV1();
+                try {
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+                    // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
+                    boolean suc = desfire.authenticate(new byte[24], (byte) 0, DESFireEV1.DesfireKeyType.TKTDES);
+                    writeToUiAppend(readResult, "suc in auth for " + suc);
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                 */
+
+                /**
+                 * end of the authentication
+                 */
 
             }
         });

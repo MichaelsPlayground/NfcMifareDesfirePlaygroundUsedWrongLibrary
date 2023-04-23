@@ -44,7 +44,9 @@ import java.security.spec.ECPoint;
 import java.security.spec.ECPublicKeySpec;
 import java.security.spec.EllipticCurve;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -55,7 +57,7 @@ import nfcjlib.core.DESFireEV1;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
@@ -84,6 +86,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn7 = findViewById(R.id.btn7);
         btn8 = findViewById(R.id.btn8);
         btn9 = findViewById(R.id.btn9);
+        btn10 = findViewById(R.id.btn10);
+        btn11 = findViewById(R.id.btn11);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -171,6 +175,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // getApplicationIdsResponse length: 5 data: a1a2a3 9100
 
                 // todo if there are more than 7 app on card there is an af response to get more data
+
+                byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+                List<byte[]> applicationIdList = divideArray(applicationListBytes, 3);
+                for (int i = 0; i < applicationIdList.size(); i++) {
+                    writeToUiAppend(readResult, "app id 1: " + Utils.bytesToHex(applicationIdList.get(i)));
+                }
 
 
             }
@@ -329,7 +339,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 // write to file
                 // first select application
-                // first select application 00 00 00
                 byte selectApplicationCommand = (byte) 0x5a;
                 byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
                 byte[] selectApplicationResponse = new byte[0];
@@ -580,6 +589,109 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             }
         });
 
+        btn10.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // delete an application
+
+                /*
+                // first select application 00 00 00
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
+
+                */
+/*
+                // get application ids
+                byte getApplicationIdsCommand = (byte) 0x6a;
+                byte[] getApplicationIdsResponse = new byte[0];
+                try {
+                    getApplicationIdsResponse = isoDep.transceive(wrapMessage(getApplicationIdsCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getApplicationIdsResponse", getApplicationIdsResponse));
+
+                byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+                List<byte[]> applicationIdList = divideArray(applicationListBytes, 3);
+                for (int i = 0; i < applicationIdList.size(); i++) {
+                    writeToUiAppend(readResult, "app id 1: " + Utils.bytesToHex(applicationIdList.get(i)));
+                }
+*/
+                // depending on the PICC Master Key Settings we need to authenticate with the MasterFile auth key
+                // or with the Application masterKey
+                // in my example the setting is "no MasterFile key needed for application creation/deletion"
+                // let's authenticate now the application file
+
+                // now select the application to delete
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] applicationIdentifier = new byte[] {0x05, 0x06, 0x07};
+                byte[] selectApplicationResponse = new byte[0];
+                try {
+                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
+
+                /**
+                 * start of the authentication
+                 */
+
+                // the application 05 06 07 was created using TKDES
+                DESFireEV1 desfire = new DESFireEV1();
+                try {
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+                    // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
+                    boolean suc = desfire.authenticate(new byte[24], (byte) 0, DESFireEV1.DesfireKeyType.TKTDES);
+                    writeToUiAppend(readResult, "suc in auth for " + suc);
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+                /**
+                 * end of the authentication
+                 */
+
+                // delete an application
+
+                byte getDeleteApplicationCommand = (byte) 0xda;
+                byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
+                writeToUiAppend(readResult, "start of deletion process for AID " + Utils.bytesToHex(APPLICATION_ID));
+                byte[] getDeleteApplicationResponse = new byte[0];
+                try {
+                    getDeleteApplicationResponse = isoDep.transceive(wrapMessage(getDeleteApplicationCommand, APPLICATION_ID));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getDeleteApplicationResponse", getDeleteApplicationResponse));
+                // 91 AE Authentication error
+            }
+        });
+
+        btn11.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // format the tag
+
+            }
+        });
+
     }
 
     // This method is run in another thread when a card is discovered
@@ -820,6 +932,24 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             value >>>= 8;
         }
         return a;
+    }
+
+    /**
+     * splits a byte array in chunks
+     *
+     * @param source
+     * @param chunksize
+     * @return a List<byte[]> with sets of chunksize
+     */
+    private static List<byte[]> divideArray(byte[] source, int chunksize) {
+        List<byte[]> result = new ArrayList<byte[]>();
+        int start = 0;
+        while (start < source.length) {
+            int end = Math.min(source.length, start + chunksize);
+            result.add(Arrays.copyOfRange(source, start, end));
+            start += chunksize;
+        }
+        return result;
     }
 
     public VersionInfo getVersionInfo() throws Exception {
