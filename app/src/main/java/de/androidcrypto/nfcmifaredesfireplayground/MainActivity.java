@@ -19,6 +19,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.github.skjolber.desfire.ev1.model.DesfireTag;
@@ -57,7 +58,7 @@ import nfcjlib.core.DESFireEV1;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
@@ -69,6 +70,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private MifareTag nfcjTag;
     private DesfireTag desfireTag;
     private DefaultIsoDepAdapter defaultIsoDepAdapter;
+
+    // some constants
+    private final byte[] applicationIdentifier_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
+    private final byte[] applicationIdentifier_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
+    private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3};
+    private final byte fileNumberLogCyclicFile = (byte) 0x03;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,6 +95,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn9 = findViewById(R.id.btn9);
         btn10 = findViewById(R.id.btn10);
         btn11 = findViewById(R.id.btn11);
+        btn12 = findViewById(R.id.btn12);
+        btn13 = findViewById(R.id.btn13);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -668,7 +677,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                  */
 
                 // delete an application
-
                 byte getDeleteApplicationCommand = (byte) 0xda;
                 byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
                 writeToUiAppend(readResult, "start of deletion process for AID " + Utils.bytesToHex(APPLICATION_ID));
@@ -680,7 +688,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
                 writeToUiAppend(readResult, printData("getDeleteApplicationResponse", getDeleteApplicationResponse));
-                // 91 AE Authentication error
+                // 91 00
             }
         });
 
@@ -688,11 +696,216 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // format the tag
+                // warning the tag will be deleted without any further note
+                // now select the application to delete
+                byte formatPiccCommand = (byte) 0xfc;
+                byte[] formatPiccResponse = new byte[0];
+                try {
+                    formatPiccResponse = isoDep.transceive(wrapMessage(formatPiccCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("formatPiccResponse", formatPiccResponse));
+            }
+        });
+
+        btn12.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // this will create an application that contains a log file in CyclicRecordFile
+
+                // create an application
+                byte numberOfKeys = (byte) 0x03;
+                byte[] responseData = new byte[2];
+                boolean success = createApplicationDes(readResult, applicationIdentifier_DesLog, numberOfKeys, responseData);
+                writeToUiAppend(readResult, "createApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (checkDuplicateError(responseData)) {
+                    writeToUiAppend(readResult, "the application was not created as it already exists, proceed");
+                }
+
+                // select the application
+                success = selectApplicationDes(readResult, applicationIdentifier_DesLog, responseData);
+                writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+
+                // todo any checks on response ?
+
+                // create the CyclicRecordFile
+                byte createCyclicFileCommand = (byte) 0xc0;
+
+                byte fileNumber = (byte) 0x08;
+                //fileNumber = fileNumberLogCyclicFile;
+                fileNumber = (byte) 0x09; // test with auth key 00
+                byte numberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
+                byte sizeOfRecord = (byte) 0x20; // 0x20 = 32 bytes, fixed for this method
+                byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
+                /*
+                M0775031 DESFIRE
+                Plain Communication = 0;
+                Plain communication secured by DES/3DES MACing = 1;
+                Fully DES/3DES enciphered communication = 3;
+                 */
+                byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
+                // here we are using key 1 for every access !
+                byte accessRightsRwCar = (byte) 0x11; // Read&Write Access & ChangeAccessRights
+                byte accessRightsRW = (byte) 0x11; // Read Access & Write Access
+                /*
+                There are four different Access Rights (2 bytes for each file) stored for each file within
+                each application:
+                - Read Access
+                - Write Access
+                - Read&Write Access
+                - ChangeAccessRights
+                 */
+
+                // create a value file in the new application: fileNo=6, cs=3
+                //ar1 = 0x00;  // RW|CAR
+                //ar2 = 0x00;  // R|W
+
+                /* @param payload	10-byte array with the following contents:
+                 * 					<br>file number (1 byte),
+                 * 					<br>communication settings (1 byte),
+                 * 					<br>access rights (2 bytes: RW||CAR||R||W),
+                 * 					<br>size of a single record size (3 bytes LSB),
+                 * 					<br>maximum amount of records (3 bytes LSB)
+                 * @return			{@code true} on success, {@code false} otherwise
+                 * @throws IOException
+                 */
+
+                byte[] createCyclicFileParameters = new byte[10]; // just to show the length
+                createCyclicFileParameters = new byte[] {
+                        fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
+                        sizeOfRecord, 0, 0,   // size of record fixed to dec 32
+                        numberOfRecords, 0, 0 // maximum amount of records, fixed to dec 5
+                };
+
+                writeToUiAppend(readResult, printData("createCyclicFileParameters", createCyclicFileParameters));
+                //
+
+                byte[] createCyclicFileResponse = new byte[0];
+                try {
+                    createCyclicFileResponse = isoDep.transceive(wrapMessage(createCyclicFileCommand, createCyclicFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("createCyclicFileResponse", createCyclicFileResponse));
+                if (checkDuplicateError(createCyclicFileResponse)) {
+                    writeToUiAppend(readResult, "the file was not created as it already exists, proceed");
+                }
+
+
+
+
 
             }
         });
 
+
+
     }
+
+    /**
+     * start section for ready to use commands
+     */
+
+    private boolean createApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte numberOfKeys, byte[] response) {
+        if (logTextView == null) return false;
+        if (applicationIdentifier == null) return false;
+        if (applicationIdentifier.length != 3) return false;
+
+        // create an application
+        byte createApplicationCommand = (byte) 0xca;
+        byte applicationMasterKeySettings = (byte) 0x0f;
+        byte[] createApplicationParameters = new byte[5];
+        System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
+        createApplicationParameters[3] = applicationMasterKeySettings;
+        createApplicationParameters[4] = numberOfKeys;
+        writeToUiAppend(logTextView, printData("createApplicationParameters", createApplicationParameters));
+        byte[] createApplicationResponse = new byte[0];
+        try {
+            createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
+            writeToUiAppend(logTextView, printData("createApplicationResponse", createApplicationResponse));
+            System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+            if (checkResponse(createApplicationResponse)) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "createApplicationDes tranceive failed: " + e.getMessage());
+        }
+        System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+        return false;
+    }
+
+    private boolean selectApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte[] response) {
+        // select application
+        byte selectApplicationCommand = (byte) 0x5a;
+        byte[] selectApplicationResponse = new byte[0];
+        try {
+            selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+            writeToUiAppend(logTextView, printData("createApplicationResponse", selectApplicationResponse));
+            System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
+            if (checkResponse(selectApplicationResponse)) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "selectApplicationDes tranceive failed: " + e.getMessage());
+        }
+        //writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
+        System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
+        return false;
+    }
+
+
+
+    /**
+     * checks if the response has an 0x'9100' at the end means success
+     * and the method returns the data without 0x'9100' at the end
+     * if any other trailing bytes show up the method returns false
+     *
+     * @param data
+     * @return
+     */
+    private boolean checkResponse(@NonNull byte[] data) {
+        // simple sanity check
+        if (data.length < 2) {
+            return false;
+        } // not ok
+        int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
+        if (status != 0x9100) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /**
+     * checks if the response has an 0x'91de' at the end means the data
+     * element is already existing
+     * if any other trailing bytes show up the method returns false
+     *
+     * @param data
+     * @return true is code is 91DE
+     */
+    private boolean checkDuplicateError(@NonNull byte[] data) {
+        // simple sanity check
+        if (data.length < 2) {
+            return false;
+        } // not ok
+        int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
+        if (status != 0x91DE) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
 
     // This method is run in another thread when a card is discovered
     // !!!! This method cannot cannot direct interact with the UI Thread
