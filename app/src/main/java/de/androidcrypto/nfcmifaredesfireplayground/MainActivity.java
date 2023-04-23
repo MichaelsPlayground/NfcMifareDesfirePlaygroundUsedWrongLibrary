@@ -27,6 +27,7 @@ import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
 import com.github.skjolber.desfire.ev1.model.file.DesfireFileCommunicationSettings;
 import com.github.skjolber.desfire.libfreefare.MifareTag;
+import com.github.skjolber.desfire.libfreefare.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -75,6 +76,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private final byte[] applicationIdentifier_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
     private final byte[] applicationIdentifier_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
     private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3};
+    private final byte[] applicationIdentifier_DesLog_key1 = Utils.hexStringToByteArray("000000000000"); // default key, lets work on this
     private final byte fileNumberLogCyclicFile = (byte) 0x03;
 
     @Override
@@ -331,7 +333,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
                 writeToUiAppend(readResult, printData("readStandardFileResponse", readStandardFileResponse));
-                writeToUiAppend(readResult,  "readStandardFileResponse: " + new String(readStandardFileResponse, StandardCharsets.UTF_8));
+                writeToUiAppend(readResult, "readStandardFileResponse: " + new String(readStandardFileResponse, StandardCharsets.UTF_8));
                 // readStandardFileResponse length: 2 data: 9100
             }
         });
@@ -431,7 +433,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 //ar2 = 0x00;  // R|W
 
                 byte[] createValueFileParameters = new byte[17]; // just to show the length
-                createValueFileParameters = new byte[] {
+                createValueFileParameters = new byte[]{
                         fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
                         10, 0, 0, 0,  // lower limit: 10
                         90, 0, 0, 0,  // upper limit: 90
@@ -642,7 +644,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // now select the application to delete
                 byte selectApplicationCommand = (byte) 0x5a;
-                byte[] applicationIdentifier = new byte[] {0x05, 0x06, 0x07};
+                byte[] applicationIdentifier = new byte[]{0x05, 0x06, 0x07};
                 byte[] selectApplicationResponse = new byte[0];
                 try {
                     selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
@@ -678,7 +680,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // delete an application
                 byte getDeleteApplicationCommand = (byte) 0xda;
-                byte[] APPLICATION_ID = new byte[] {0x05, 0x06, 0x07};
+                byte[] APPLICATION_ID = new byte[]{0x05, 0x06, 0x07};
                 writeToUiAppend(readResult, "start of deletion process for AID " + Utils.bytesToHex(APPLICATION_ID));
                 byte[] getDeleteApplicationResponse = new byte[0];
                 try {
@@ -714,6 +716,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // this will create an application that contains a log file in CyclicRecordFile
+                // in the end it writes one log entry
 
                 // create an application
                 byte numberOfKeys = (byte) 0x03;
@@ -730,12 +733,24 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // todo any checks on response ?
 
+                /*
+                responseData = new byte[2]; // todo work on this
+                // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
+                success = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_key1, responseData);
+                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!success) {
+                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                    return;
+                }
+
+                 */
+
                 // create the CyclicRecordFile
                 byte createCyclicFileCommand = (byte) 0xc0;
 
-                byte fileNumber = (byte) 0x08;
-                //fileNumber = fileNumberLogCyclicFile;
-                fileNumber = (byte) 0x09; // test with auth key 00
+                //byte fileNumber = (byte) 0x08;
+                byte fileNumber = fileNumberLogCyclicFile;
+                //fileNumber = (byte) 0x09; // test with auth key 00
                 byte numberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
                 byte sizeOfRecord = (byte) 0x20; // 0x20 = 32 bytes, fixed for this method
                 byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
@@ -773,15 +788,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                  */
 
                 byte[] createCyclicFileParameters = new byte[10]; // just to show the length
-                createCyclicFileParameters = new byte[] {
+                createCyclicFileParameters = new byte[]{
                         fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
                         sizeOfRecord, 0, 0,   // size of record fixed to dec 32
                         numberOfRecords, 0, 0 // maximum amount of records, fixed to dec 5
                 };
 
                 writeToUiAppend(readResult, printData("createCyclicFileParameters", createCyclicFileParameters));
-                //
-
                 byte[] createCyclicFileResponse = new byte[0];
                 try {
                     createCyclicFileResponse = isoDep.transceive(wrapMessage(createCyclicFileCommand, createCyclicFileParameters));
@@ -794,13 +807,65 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "the file was not created as it already exists, proceed");
                 }
 
+                // do the auth with DesfireEv1
+                DESFireEV1 desFireEV1 = new DESFireEV1();
+                writeToUiAppend(readResult, "*** authenticate with DesfireEv1 ***");
+                try {
+                    // set adapter
+                    desFireEV1.setAdapter(defaultIsoDepAdapter);
+                    // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
+                    boolean suc = desFireEV1.authenticate(applicationIdentifier_DesLog_key1, (byte) 0x01, DESFireEV1.DesfireKeyType.TDES);
+                    writeToUiAppend(readResult, "suc in auth for " + suc);
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                    return;
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "Exception: " + e.getMessage());
+                    return;
+                }
 
 
+                // write to the CyclicFile
+                byte writeFileCommand = (byte) 0x3b;
+                // byte fileNumberLogCyclicFile; // is defined as constant
+                byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // write to the beginning
+                byte[] dataLength;
+                String contentString = "Entry from " + Utils.getTimestamp(); // timestamp is 19 characters long
+                int contentLengthInt = contentString.length();
+                // todo be more universal with this. The created record size is 32 so this data is fitting into one record
+                byte[] contentLength = new byte[]{(byte) (contentLengthInt & 0xFF), (byte) 0x00, (byte) 0x00};
+                byte[] content = contentString.getBytes(StandardCharsets.UTF_8);
+                byte[] writeFileParameters = new byte[(contentLengthInt + 7)];
+                writeFileParameters[0] = fileNumberLogCyclicFile;
+                System.arraycopy(offset, 0, writeFileParameters, 1, 3);
+                System.arraycopy(contentLength, 0, writeFileParameters, 4, 3);
+                System.arraycopy(content, 0, writeFileParameters, 7, contentLengthInt);
+                writeToUiAppend(readResult, printData("writeFileParameters", writeFileParameters));
+                byte[] writeFileResponse = new byte[0];
+                try {
+                    writeFileResponse = isoDep.transceive(wrapMessage(writeFileCommand, writeFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("writeFileResponse", writeFileResponse));
 
+                // don't forget to commit all changes
+                byte commitCommand = (byte) 0xc7;
+                byte[] commitResponse = new byte[0];
+                try {
+                    commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("commitResponse", commitResponse));
 
             }
         });
-
 
 
     }
@@ -808,6 +873,112 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     /**
      * start section for ready to use commands
      */
+
+    private boolean authenticateApplicationDes(TextView logTextView, byte keyId, byte[] key, byte[] response) {
+        try {
+            writeToUiAppend(logTextView, "authenticateApplicationDes for keyId " + keyId + " and key " + Utils.bytesToHex(key));
+            // do DES auth
+            //String getChallengeCommand = "901a0000010000";
+            //String getChallengeCommand = "9084000000"; // IsoGetChallenge
+
+            //byte[] getChallengeResponse = nfcA.transceive(Utils.hexStringToByteArray(getChallengeCommand));
+            //byte[] getChallengeResponse = nfcA.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x01} ));
+            byte[] getChallengeResponse = isoDep.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) (keyId & 0xFF)}));
+            writeToUiAppend(logTextView,  printData("getChallengeResponse", getChallengeResponse));
+            // cf5e0ee09862d90391af
+            // 91 af at the end shows there is more data
+
+            byte[] challenge = Arrays.copyOf(getChallengeResponse, getChallengeResponse.length - 2);
+            writeToUiAppend(logTextView, printData("challengeResponse", challenge));
+
+            // Of course the rndA shall be a random number,
+            // but we will use a constant number to make the example easier.
+            byte[] rndA = Utils.hexStringToByteArray("0001020304050607");
+            writeToUiAppend(logTextView, printData("rndA", rndA));
+
+            // This is the default key for a blank DESFire card.
+            // defaultKey = 8 byte array = [0x00, ..., 0x00]
+            //byte[] defaultDESKey = Utils.hexStringToByteArray("0000000000000000");
+            byte[] defaultDESKey = key.clone();
+            byte[] IV = new byte[8];
+
+            // Decrypt the challenge with default keybyte[] rndB = decrypt(challenge, defaultDESKey, IV);
+            byte[] rndB = decrypt(challenge, defaultDESKey, IV);
+            writeToUiAppend(logTextView, printData("rndB", rndB));
+            // Rotate left the rndB byte[] leftRotatedRndB = rotateLeft(rndB);
+            byte[] leftRotatedRndB = rotateLeft(rndB);
+            writeToUiAppend(logTextView, printData("leftRotatedRndB", leftRotatedRndB));
+            // Concatenate the RndA and rotated RndB byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
+            byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
+            writeToUiAppend(logTextView, printData("rndA_rndB", rndA_rndB));
+
+            // Encrypt the bytes of the last step to get the challenge answer byte[] challengeAnswer = encrypt(rndA_rndB, defaultDESKey, IV);
+            IV = challenge;
+            byte[] challengeAnswer = encrypt(rndA_rndB, defaultDESKey, IV);
+            writeToUiAppend(logTextView, printData("challengeAnswer", challengeAnswer));
+
+            IV = Arrays.copyOfRange(challengeAnswer, 8, 16);
+                /*
+                    Build and send APDU with the answer. Basically wrap the challenge answer in the APDU.
+                    The total size of apdu (for this scenario) is 22 bytes:
+                    > 0x90 0xAF 0x00 0x00 0x10 [16 bytes challenge answer] 0x00
+                */
+            byte[] challengeAnswerAPDU = new byte[22];
+            challengeAnswerAPDU[0] = (byte) 0x90; // CLS
+            challengeAnswerAPDU[1] = (byte) 0xAF; // INS
+            challengeAnswerAPDU[2] = (byte) 0x00; // p1
+            challengeAnswerAPDU[3] = (byte) 0x00; // p2
+            challengeAnswerAPDU[4] = (byte) 0x10; // data length: 16 bytes
+            challengeAnswerAPDU[challengeAnswerAPDU.length - 1] = (byte) 0x00;
+            System.arraycopy(challengeAnswer, 0, challengeAnswerAPDU, 5, challengeAnswer.length);
+            writeToUiAppend(logTextView, printData("challengeAnswerAPDU", challengeAnswerAPDU));
+
+            /*
+             * Sending the APDU containing the challenge answer.
+             * It is expected to be return 10 bytes [rndA from the Card] + 9100
+             */
+            byte[] challengeAnswerResponse = isoDep.transceive(challengeAnswerAPDU);
+            // response = channel.transmit(new CommandAPDU(challengeAnswerAPDU));
+            writeToUiAppend(logTextView, printData("challengeAnswerResponse", challengeAnswerResponse));
+            byte[] challengeAnswerResp = Arrays.copyOf(challengeAnswerResponse, getChallengeResponse.length - 2);
+            writeToUiAppend(logTextView, printData("challengeAnswerResp", challengeAnswerResp));
+
+            /*
+             * At this point, the challenge was processed by the card. The card decrypted the
+             * rndA rotated it and sent it back.
+             * Now we need to check if the RndA sent by the Card is valid.
+             */// encrypted rndA from Card, returned in the last step byte[] encryptedRndAFromCard = response.getData();
+
+            // Decrypt the rnd received from the Card.byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
+            //byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
+            byte[] rotatedRndAFromCard = decrypt(challengeAnswerResp, defaultDESKey, IV);
+            writeToUiAppend(logTextView, printData("rotatedRndAFromCard", rotatedRndAFromCard));
+
+            // As the card rotated left the rndA,// we shall un-rotate the bytes in order to get compare it to our original rndA.byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
+            byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
+            writeToUiAppend(logTextView, printData("rndAFromCard", rndAFromCard));
+            writeToUiAppend(logTextView, "********** AUTH RESULT **********");
+            //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+            if (Arrays.equals(rndA, rndAFromCard)) {
+                writeToUiAppend(logTextView, "Authenticated");
+                return true;
+            } else {
+                writeToUiAppend(logTextView, "Authentication failed");
+                return false;
+                //System.err.println(" ### Authentication failed. ### ");
+                //log("rndA:" + toHexString(rndA) + ", rndA from Card: " + toHexString(rndAFromCard));
+            }
+            //writeToUiAppend(logTextView, "********** AUTH RESULT END **********");
+            //return false;
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "authenticateApplicationDes tranceive failed: " + e.getMessage());
+            writeToUiAppend(logTextView, "authenticateApplicationDes tranceive failed: " + Arrays.toString(e.getStackTrace()));
+        }
+        //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+        return false;
+    }
+
 
     private boolean createApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte numberOfKeys, byte[] response) {
         if (logTextView == null) return false;
@@ -861,7 +1032,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
         return false;
     }
-
 
 
     /**
@@ -987,7 +1157,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 //byte[] getChallengeResponse = nfcA.transceive(Utils.hexStringToByteArray(getChallengeCommand));
                 //byte[] getChallengeResponse = nfcA.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x01} ));
-                byte[] getChallengeResponse = isoDep.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x00} ));
+                byte[] getChallengeResponse = isoDep.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x00}));
                 writeToUiAppend(readResult, "getChallengeResponse: " + Utils.bytesToHex(getChallengeResponse));
                 // cf5e0ee09862d90391af
                 // 91 af at the end shows there is more data
@@ -1027,12 +1197,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     > 0x90 0xAF 0x00 0x00 0x10 [16 bytes challenge answer] 0x00
                 */
                 byte[] challengeAnswerAPDU = new byte[22];
-                challengeAnswerAPDU[0] = (byte)0x90; // CLS
-                challengeAnswerAPDU[1] = (byte)0xAF; // INS
-                challengeAnswerAPDU[2] = (byte)0x00; // p1
-                challengeAnswerAPDU[3] = (byte)0x00; // p2
-                challengeAnswerAPDU[4] = (byte)0x10; // data length: 16 bytes
-                challengeAnswerAPDU[challengeAnswerAPDU.length - 1] = (byte)0x00;
+                challengeAnswerAPDU[0] = (byte) 0x90; // CLS
+                challengeAnswerAPDU[1] = (byte) 0xAF; // INS
+                challengeAnswerAPDU[2] = (byte) 0x00; // p1
+                challengeAnswerAPDU[3] = (byte) 0x00; // p2
+                challengeAnswerAPDU[4] = (byte) 0x10; // data length: 16 bytes
+                challengeAnswerAPDU[challengeAnswerAPDU.length - 1] = (byte) 0x00;
                 System.arraycopy(challengeAnswer, 0, challengeAnswerAPDU, 5, challengeAnswer.length);
                 writeToUiAppend(readResult, printData("challengeAnswerAPDU", challengeAnswerAPDU));
 
@@ -1134,8 +1304,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     /**
      * Convert int to byte array (LSB).
      *
-     * @param value	the value to convert
-     * @return		4-byte byte array
+     * @param value the value to convert
+     * @return 4-byte byte array
      */
     // BitOp.java / nfcjLib
     public static byte[] intToLsb(int value) {
@@ -1172,7 +1342,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
     // Reference: http://neteril.org/files/M075031_desfire.pdf
     // Commands
-    public static final byte GET_VERSION_INFO    = (byte) 0x60;
+    public static final byte GET_VERSION_INFO = (byte) 0x60;
     private static final byte GET_MANUFACTURING_DATA = (byte) 0x60;
     private static final byte GET_APPLICATION_DIRECTORY = (byte) 0x6A;
     private static final byte GET_ADDITIONAL_FRAME = (byte) 0xAF;
@@ -1284,7 +1454,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
      *
      * @param data: Byte Array
      * @return String containing the hexadecimal representation
-     */private static String toHexString(byte[] data) {
+     */
+    private static String toHexString(byte[] data) {
         StringBuilder hexString = new StringBuilder();
         for (byte item : data) {
             String hex = String.format("%02x", item);
@@ -1308,9 +1479,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         Cipher cipher = Cipher.getInstance("DES/CBC/NoPadding");
         SecretKeySpec keySpec = new SecretKeySpec(key, "DES");
         IvParameterSpec algorithmParamSpec = new IvParameterSpec(IV);
-
         cipher.init(mode, keySpec, algorithmParamSpec);
-
         return cipher;
     }
 

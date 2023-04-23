@@ -1,5 +1,13 @@
 package de.androidcrypto.nfcmifaredesfireplayground;
 
+import android.os.Build;
+
+import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+
 public class Utils {
 
     public static String removeAllNonAlphaNumeric(String s) {
@@ -119,6 +127,18 @@ public class Utils {
                 ((bytes[1] & 0xFF) << 16) |
                 ((bytes[2] & 0xFF) << 8 ) |
                 ((bytes[3] & 0xFF) << 0 );
+    }
+
+    // gives an 19 byte long timestamp
+    public static String getTimestamp() {
+        // gives a 19 character long string
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return ZonedDateTime
+                    .now(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("uuuu.MM.dd HH:mm:ss"));
+        } else {
+            return new SimpleDateFormat("yyyy.MM.dd HH:mm:ss").format(new Date());
+        }
     }
 
  }
