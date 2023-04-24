@@ -40,7 +40,7 @@ import javax.crypto.spec.SecretKeySpec;
 import nfcjlib.core.DESFireEV1;
 
 
-public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
+public class MainActivityV1 extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
     Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17;
     EditText tagId, dataToWrite, readResult;
@@ -68,22 +68,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private final byte[] AID_Master_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
     private final byte AID_Master_Key0_Number = (byte) 0x00;
 
-    // constants for application "DesStandard", 3 DES keys, 2 files with each 32 bytes
     private final byte[] AID_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
-    private final byte AID_DesStandard_number_of_keys = (byte) 0x03; // key0 general, key1 read, key2 write access
+    private final byte AID_DesStandard_number_of_keys = (byte) 0x03;
     private final byte[] AID_DesStandard_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
-    private final byte AID_DesStandard_Key0_Number = (byte) 0x00;
-    private final byte[] AID_DesStandard_Key1 =     Utils.hexStringToByteArray("1122119988776601");
-    private final byte AID_DesStandard_Key1_Number = (byte) 0x01;
-    private final byte[] AID_DesStandard_Key2 =     Utils.hexStringToByteArray("1122119988776602");
-    private final byte AID_DesStandard_Key2_Number = (byte) 0x02;
-    private final byte DesStandardFileFileNumber1 = (byte) 0x01;
-    private final byte DesStandardFileFileNumber2 = (byte) 0x02;
 
-    // constants for application "DesValue", 2 DES keys, 1 ValueFile with increment and decrement
     private final byte[] AID_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
-
-    // constants for application "DesLog", 2 DES keys, 1 Cycle File with 5 (+1 spare) records with each 32 bytes
     private final byte[] AID_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3}; // A3 A8 A9
     private final byte[] AID_DesLog_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
     private final byte AID_DesLog_Key0_Number = (byte) 0x00;
@@ -92,10 +81,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private final byte AID_DesLog_Key1_Number = (byte) 0x01;
     private final byte[] AID_DesLog_Key2 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
     private final byte[] AID_DesLog_Key2_New = Utils.hexStringToByteArray("3322119988776602"); // new key, lets work on this
-    //private final byte[] AID_DesLog_Key2_New2 = Utils.hexStringToByteArray("3322119988776612"); // new key, lets work on this
+    private final byte[] AID_DesLog_Key2_New2 = Utils.hexStringToByteArray("3322119988776612"); // new key, lets work on this
     private final byte AID_DesLog_Key2_Number = (byte) 0x02;
     private final byte DesLogCyclicFileFileNumber = (byte) 0x03;
-    private final byte DesLogCyclicFileNumberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
+    private final byte numberOfRecordsLogCyclicFile = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,8 +117,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // create application
 
-                writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "create DesStandard application");
                 // first select application 00 00 00
                 byte[] responseData = new byte[2];
                 responseData = new byte[2];
@@ -161,8 +148,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // list applications
 
-                writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "list applications on card");
                 // first select application 00 00 00
                 byte[] responseData = new byte[2];
                 responseData = new byte[2];
@@ -192,33 +177,56 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // select application and create a standard file
-
-                writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "create a Standard File");
-
-                // select the application
-                byte[] responseData = new byte[2];
-                boolean success = selectApplicationDes(readResult, AID_DesStandard, responseData);
-                writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
-
-                // authenticate
-                responseData = new byte[2];
-                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key0_Number, AID_DesStandard_Key0, responseData);
-                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
-                if (!authenticateSuccess) {
-                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
-                    return;
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3}; // AID is A3A2A1
+                byte[] selectApplicationResponse = new byte[0];
+                try {
+                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
+                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
 
-                // create the standard file
-                responseData = new byte[2];
-                boolean createStandardFileSuccess = createStandardFile(readResult, DesStandardFileFileNumber1, responseData);
-                writeToUiAppend(readResult, "createStandardFile success: " + success + " with response: " + Utils.bytesToHex(responseData));
-                if (!createStandardFileSuccess) {
-                    writeToUiAppend(readResult, "the createStandardFile was not successful, aborted");
-                    return;
+                // we create a standard file within the application
+                byte createStandardFileCommand = (byte) 0xcd;
+                // CD | File No | Comms setting byte | Access rights (2 bytes) | File size (3 bytes)
+                byte fileNumber = (byte) 07;
+                byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
+                /*
+                M0775031 DESFIRE
+                Plain Communication = 0;
+                Plain communication secured by DES/3DES MACing = 1;
+                Fully DES/3DES enciphered communication = 3;
+                 */
+                byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
+                /*
+                There are four different Access Rights (2 bytes for each file) stored for each file within
+                each application:
+                - Read Access
+                - Write Access
+                - Read&Write Access
+                - ChangeAccessRights
+                 */
+                byte[] fileSize = new byte[]{(byte) 0x20, (byte) 0xf00, (byte) 0x00}; // 32 bytes
+                byte[] createStandardFileParameters = new byte[7];
+                createStandardFileParameters[0] = fileNumber;
+                createStandardFileParameters[1] = commSettingsByte;
+                System.arraycopy(accessRights, 0, createStandardFileParameters, 2, 2);
+                System.arraycopy(fileSize, 0, createStandardFileParameters, 4, 3);
+
+                writeToUiAppend(readResult, printData("createStandardFileParameters", createStandardFileParameters));
+                // createStandardFileParameters length: 7 data: 0700eeee200000
+
+                byte[] createStandardFileResponse = new byte[0];
+                try {
+                    createStandardFileResponse = isoDep.transceive(wrapMessage(createStandardFileCommand, createStandardFileParameters));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
+                writeToUiAppend(readResult, printData("createStandardFileResponse", createStandardFileResponse));
+                // createStandardFileResponse length: 2 data: 9100
             }
         });
 
@@ -226,24 +234,39 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // get the free memory on the card
-                writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "get free memory on card");
-
                 // first select application 00 00 00
-                byte[] responseData = new byte[2];
-                responseData = new byte[2];
-                boolean selectApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
-                writeToUiAppend(readResult, "selectApplication success: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
-                if (!selectApplicationSuccess) {
-                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
-                    return;
+                byte selectApplicationCommand = (byte) 0x5a;
+                byte[] masterfileApplication = new byte[3]; // 00 00 00
+                byte[] selectMasterfileApplicationResponse = new byte[0];
+                try {
+                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, masterfileApplication));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
+                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
 
-                int freeMemoryOnCard = getFreeMemory(readResult, responseData);
-                writeToUiAppend(readResult, "freeMemoryOnCard: " + freeMemoryOnCard + " with response: " + Utils.bytesToHex(responseData));
-                if (freeMemoryOnCard == 0) {
-                    writeToUiAppend(readResult, "the getFreeMemory was not successful, aborted");
-                    return;
+                // get the free memory on the card
+                byte getFreeMemoryCommand = (byte) 0x6e;
+                byte[] getFreeMemoryResponse = new byte[0];
+                try {
+                    getFreeMemoryResponse = isoDep.transceive(wrapMessage(getFreeMemoryCommand, null));
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                }
+                writeToUiAppend(readResult, printData("getFreeMemoryResponse", getFreeMemoryResponse));
+                // getFreeMemoryResponse length: 5 data: 400800 9100 (EV1 2K after create 1 app + 1 32 byte file)
+                // getFreeMemoryResponse length: 5 data: 000a00 9100 (EV2 2K empty)
+                // getFreeMemoryResponse length: 5 data: 001400 9100 (EV2 4K empty)
+                // 400800 = 00 08 40 = 2112 bytes
+                // 000a00 = 00 0a 00 = 2560 bytes
+                // 001400 = 00 14 00 = 5120 bytes
+                int length;
+                if (getFreeMemoryResponse.length > 2) {
+                    byte[] lengthBytes = Arrays.copyOf(getFreeMemoryResponse, getFreeMemoryResponse.length - 2);
+                    length = byteArrayLength3InversedToInt(lengthBytes);
+                    writeToUiAppend(readResult, "free memory on card: " + length);
                 }
             }
         });
@@ -251,30 +274,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn6.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // read from standard file
-
-                writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "read from a Standard File");
-
-                // select the application
-                byte[] responseData = new byte[2];
-                boolean success = selectApplicationDes(readResult, AID_DesStandard, responseData);
-                writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
-
-                // authenticate
-                responseData = new byte[2];
-                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key1_Number, AID_DesStandard_Key1, responseData);
-                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
-                if (!authenticateSuccess) {
-                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
-                    return;
-                }
-
-
-
-
-
+                // read from file
+                // first select application
                 // first select application 00 00 00
                 byte selectApplicationCommand = (byte) 0x5a;
                 byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
@@ -309,6 +310,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 writeToUiAppend(readResult, printData("readStandardFileResponse", readStandardFileResponse));
                 writeToUiAppend(readResult, "readStandardFileResponse: " + new String(readStandardFileResponse, StandardCharsets.UTF_8));
+                // readStandardFileResponse length: 2 data: 9100
             }
         });
 
@@ -360,7 +362,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 }
                 writeToUiAppend(readResult, printData("writeStandardFileResponse", writeStandardFileResponse));
                 // writeStandardFileResponse length: 2 data: 9100
-                xx
             }
         });
 
@@ -760,7 +761,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 createCyclicFileParameters = new byte[]{
                         fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
                         sizeOfRecord, 0, 0,   // size of record fixed to dec 32
-                        DesLogCyclicFileNumberOfRecords, 0, 0 // maximum amount of records, fixed to dec 5
+                        numberOfRecordsLogCyclicFile, 0, 0 // maximum amount of records, fixed to dec 5
                 };
 
                 writeToUiAppend(readResult, printData("createCyclicFileParameters", createCyclicFileParameters));
@@ -1398,178 +1399,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             } // try
         }
         return null;
-    }
-
-    private int getFreeMemory(TextView logTextView, byte[] response) {
-        // get the free memory on the card
-        byte getFreeMemoryCommand = (byte) 0x6e;
-        byte[] getFreeMemoryResponse = new byte[0];
-        try {
-            getFreeMemoryResponse = isoDep.transceive(wrapMessage(getFreeMemoryCommand, null));
-        } catch (Exception e) {
-            //throw new RuntimeException(e);
-            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
-            return 0;
-        }
-        writeToUiAppend(logTextView, printData("getFreeMemoryResponse", getFreeMemoryResponse));
-        // getFreeMemoryResponse length: 5 data: 400800 9100 (EV1 2K after create 1 app + 1 32 byte file)
-        // getFreeMemoryResponse length: 5 data: 000a00 9100 (EV2 2K empty)
-        // getFreeMemoryResponse length: 5 data: 001400 9100 (EV2 4K empty)
-        // 400800 = 00 08 40 = 2112 bytes
-        // 000a00 = 00 0a 00 = 2560 bytes
-        // 001400 = 00 14 00 = 5120 bytes
-        int memorySize = 0;
-        if (getFreeMemoryResponse.length > 2) {
-            byte[] lengthBytes = Arrays.copyOf(getFreeMemoryResponse, getFreeMemoryResponse.length - 2);
-            memorySize = byteArrayLength3InversedToInt(lengthBytes);
-            writeToUiAppend(logTextView, "free memory on card: " + memorySize);
-        }
-        System.arraycopy(returnStatusBytes(getFreeMemoryResponse), 0, response, 0, 2);
-        return memorySize;
-    }
-
-    /**
-     * section for standard files
-     */
-
-    private boolean createStandardFile(TextView logTextView, byte fileNumber, byte[] response) {
-        // we create a standard file within the selected application
-        byte createStandardFileCommand = (byte) 0xcd;
-        // CD | File No | Comms setting byte | Access rights (2 bytes) | File size (3 bytes)
-        byte commSettingsByte = 0; // plain communication without any encryption
-                /*
-                M0775031 DESFIRE
-                Plain Communication = 0;
-                Plain communication secured by DES/3DES MACing = 1;
-                Fully DES/3DES enciphered communication = 3;
-                 */
-        byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
-                /*
-                There are four different Access Rights (2 bytes for each file) stored for each file within
-                each application:
-                - Read Access
-                - Write Access
-                - Read&Write Access
-                - ChangeAccessRights
-                 */
-        // here we are using key 1 for read and key2 for write access access, key0 has read&write access + change rights !
-        byte accessRightsRwCar = (byte) 0x00; // Read&Write Access & ChangeAccessRights
-        byte accessRightsRW = (byte) 0x12; // Read Access & Write Access
-        byte[] fileSize = new byte[]{(byte) 0x20, (byte) 0xf00, (byte) 0x00}; // 32 bytes
-        byte[] createStandardFileParameters = new byte[7];
-        createStandardFileParameters[0] = fileNumber;
-        createStandardFileParameters[1] = commSettingsByte;
-        createStandardFileParameters[2] = accessRightsRwCar;
-        createStandardFileParameters[3] =  accessRightsRW;
-        System.arraycopy(fileSize, 0, createStandardFileParameters, 4, 3);
-        writeToUiAppend(readResult, printData("createStandardFileParameters", createStandardFileParameters));
-        byte[] createStandardFileResponse = new byte[0];
-        try {
-            createStandardFileResponse = isoDep.transceive(wrapMessage(createStandardFileCommand, createStandardFileParameters));
-        } catch (Exception e) {
-            //throw new RuntimeException(e);
-            writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-            return false;
-        }
-        writeToUiAppend(readResult, printData("createStandardFileResponse", createStandardFileResponse));
-        System.arraycopy(returnStatusBytes(createStandardFileResponse), 0, response, 0, 2);
-        writeToUiAppend(logTextView, printData("createStandardFileResponse", createStandardFileResponse));
-        if (checkDuplicateError(createStandardFileResponse)) {
-            writeToUiAppend(logTextView, "the file was not created as it already exists, proceed");
-            return true;
-        }
-        if (checkResponse(createStandardFileResponse)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    private byte[] readFromStandardFile(TextView logTextView, byte fileNumber, byte[] response) {
-        // we read from a standard file within the selected application
-
-        // now read from file
-        byte readStandardFileCommand = (byte) 0xbd;
-        byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // no offset, read from the beginning
-        byte[] length = new byte[]{(byte) 0x20, (byte) 0xf00, (byte) 0x00}; // 32 bytes
-        byte[] readStandardFileParameters = new byte[7];
-        readStandardFileParameters[0] = fileNumber;
-        System.arraycopy(offset, 0, readStandardFileParameters, 1, 3);
-        System.arraycopy(length, 0, readStandardFileParameters, 4, 3);
-        writeToUiAppend(readResult, printData("readStandardFileParameters", readStandardFileParameters));
-        byte[] readStandardFileResponse = new byte[0];
-        try {
-            readStandardFileResponse = isoDep.transceive(wrapMessage(readStandardFileCommand, readStandardFileParameters));
-        } catch (Exception e) {
-            //throw new RuntimeException(e);
-            writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-            return null;
-        }
-        writeToUiAppend(logTextView, printData("readStandardFileResponse", readStandardFileResponse));
-        System.arraycopy(returnStatusBytes(readStandardFileResponse), 0, response, 0, 2);
-        return Arrays.copyOf(readStandardFileResponse, readStandardFileResponse.length - 2);
-    }
-
-    private boolean writeToStandardFile(TextView logTextView, byte fileNumber, byte[] data, byte[] response) {
-        // some sanity checks to avoid any issues
-        if (fileNumber < (byte) 0x00) return false;
-        if (fileNumber > (byte) 0x0A) return false;
-        if (data == null) return false;
-        if (data.length == 0) return false;
-        if (data.length > 32) return false;
-
-// write to file
-        // first select application
-        byte selectApplicationCommand = (byte) 0x5a;
-        byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
-        byte[] selectApplicationResponse = new byte[0];
-        try {
-            selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
-        } catch (Exception e) {
-            //throw new RuntimeException(e);
-            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
-        }
-        writeToUiAppend(logTextView, printData("selectApplicationResponse", selectApplicationResponse));
-
-        // now write to file
-        byte[] dataByte = data.getBytes(StandardCharsets.UTF_8);
-        byte writeStandardFileCommand = (byte) 0x3d;
-        byte fileNumber = (byte) 07;
-        int numberOfBytes = dataByte.length;
-        byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // no offset
-        byte[] length = new byte[]{(byte) (numberOfBytes & 0xFF), (byte) 0xf00, (byte) 0x00}; // 32 bytes
-        byte[] writeStandardFileParameters = new byte[(7 + dataByte.length)]; // todo if encrypted we need to append the CRC
-        writeStandardFileParameters[0] = fileNumber;
-        System.arraycopy(offset, 0, writeStandardFileParameters, 1, 3);
-        System.arraycopy(length, 0, writeStandardFileParameters, 4, 3);
-        System.arraycopy(dataByte, 0, writeStandardFileParameters, 7, dataByte.length);
-
-        writeToUiAppend(readResult, printData("writeStandardFileParameters", writeStandardFileParameters));
-        // writeStandardFileParameters length: 19 data: 07000000200000546865206c617a7920646f67
-
-        byte[] writeStandardFileResponse = new byte[0];
-        try {
-            writeStandardFileResponse = isoDep.transceive(wrapMessage(writeStandardFileCommand, writeStandardFileParameters));
-        } catch (Exception e) {
-            //throw new RuntimeException(e);
-            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
-        }
-        writeToUiAppend(logTextView, printData("writeStandardFileResponse", writeStandardFileResponse));
-        // writeStandardFileResponse length: 2 data: 9100
-
-
-        writeToUiAppend(readResult, printData("createStandardFileResponse", createStandardFileResponse));
-        System.arraycopy(returnStatusBytes(createStandardFileResponse), 0, response, 0, 2);
-        writeToUiAppend(logTextView, printData("createStandardFileResponse", createStandardFileResponse));
-        if (checkDuplicateError(createStandardFileResponse)) {
-            writeToUiAppend(logTextView, "the file was not created as it already exists, proceed");
-            return true;
-        }
-        if (checkResponse(createStandardFileResponse)) {
-            return true;
-        } else {
-            return false;
-        }
     }
 
     /**

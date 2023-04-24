@@ -26,6 +26,7 @@ At the end change the PICC Master Key.
 
 https://github.com/andrade/nfcjlib
 
+https://hack.cert.pl/files/desfire-9f122c71e0057d4f747d2ee295b0f5f6eef8ac32.html
 
 
 This app is verifying the ("originality") signature of a Mifare Desfire EV2 tag.
