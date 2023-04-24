@@ -73,9 +73,17 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private DefaultIsoDepAdapter defaultIsoDepAdapter;
 
     // some constants
+    private final byte[] applicationIdentifier_Master = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00};
+    private final byte[] applicationIdentifier_Master_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte applicationIdentifier_Master_Key0_Number = (byte) 0x00;
+
     private final byte[] applicationIdentifier_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
+    private final byte[] applicationIdentifier_DesStandard_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+
     private final byte[] applicationIdentifier_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
     private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3}; // A3 A8 A9
+    private final byte[] applicationIdentifier_DesLog_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte applicationIdentifier_DesLog_Key0_Number = (byte) 0x00;
     private final byte[] applicationIdentifier_DesLog_Key1 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
     private final byte[] applicationIdentifier_DesLog_Key1_NEW = Utils.hexStringToByteArray("3322119988776601"); // new key, lets work on this
     private final byte applicationIdentifier_DesLog_Key1_Number = (byte) 0x01;
@@ -944,19 +952,45 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // change application key
 
+
+
+
+
+
                 // first way is to use DESFireEV1.java implementation
                 DESFireEV1 desFireEV1 = new DESFireEV1();
                 try {
                     // set adapter
                     desFireEV1.setAdapter(defaultIsoDepAdapter);
 
+                    // select MasterFile
+                    // select an application
+                    boolean sucSelectMasterApplication = desFireEV1.selectApplication(applicationIdentifier_Master);
+                    writeToUiAppend(readResult, "sucSelectMasterApplication: " + sucSelectMasterApplication);
+
+                    // authenticate MasterFile
+                    boolean sucAuthenticateMaster = desFireEV1.authenticate(applicationIdentifier_Master_Key0, (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "suc in authMaster for " + sucAuthenticateMaster);
+
                     // select an application
                     boolean sucSelectApplication = desFireEV1.selectApplication(applicationIdentifier_DesLog);
                     writeToUiAppend(readResult, "sucSelectApplication: " + sucSelectApplication);
 
+                    // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
+                    // createApplicationDes:
+                    // byte applicationMasterKeySettings = (byte) 0x0f; - the leftmost bits are '0' so it is the appMasterKey ('00') that has tto get used for authorization
+
+                    // authenticate with key 0
+                    boolean sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key0, applicationIdentifier_DesLog_Key0_Number, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
+
                     // authenticate with key 1
-                    boolean sucAuthenticate = desFireEV1.authenticate(applicationIdentifier_DesLog_Key1, (byte) 0x01, DESFireEV1.DesfireKeyType.DES);
-                    writeToUiAppend(readResult, "suc in auth for " + sucAuthenticate);
+                    //sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key1, applicationIdentifier_DesLog_Key1_Number, DESFireEV1.DesfireKeyType.DES);
+                    //writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
+
+                    // authenticate with key 2
+                    //sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key2, applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES);
+                    //writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
 
                     // change the key
                     boolean sucChange =  desFireEV1.changeKey(applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, applicationIdentifier_DesLog_Key2_NEW, applicationIdentifier_DesLog_Key2);
