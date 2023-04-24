@@ -5,9 +5,7 @@ import static com.github.skjolber.desfire.libfreefare.MifareDesfire.mifare_desfi
 import android.content.Context;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
-import android.nfc.TagLostException;
 import android.nfc.tech.IsoDep;
-import android.nfc.tech.NfcA;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -25,27 +23,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.github.skjolber.desfire.ev1.model.DesfireTag;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
-import com.github.skjolber.desfire.ev1.model.file.DesfireFileCommunicationSettings;
 import com.github.skjolber.desfire.libfreefare.MifareTag;
-import com.github.skjolber.desfire.libfreefare.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.AccessControlException;
-import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.SignatureException;
-import java.security.spec.ECFieldFp;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPoint;
-import java.security.spec.ECPublicKeySpec;
-import java.security.spec.EllipticCurve;
-import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -59,7 +42,7 @@ import nfcjlib.core.DESFireEV1;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte;
@@ -125,6 +108,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn13 = findViewById(R.id.btn13);
         btn14 = findViewById(R.id.btn14);
         btn15 = findViewById(R.id.btn15);
+        btn16 = findViewById(R.id.btn16);
+        btn17 = findViewById(R.id.btn17);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -172,6 +157,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
                     return;
                 }
+
+
   /*
                 byte selectApplicationCommand = (byte) 0x5a;
                 byte[] masterfileApplication = new byte[3]; // 00 00 00
@@ -185,6 +172,19 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
 */
                 // get application ids
+                responseData = new byte[2];
+                List<byte[]> applicationIdList = getApplicationIdsList(readResult, responseData);
+                writeToUiAppend(readResult, "getApplicationIdsList response: " + Utils.bytesToHex(responseData));
+                if (applicationIdList != null) {
+                    for (int i = 0; i < applicationIdList.size(); i++) {
+                        writeToUiAppend(readResult, "entry " + i + " app id : " + Utils.bytesToHex(applicationIdList.get(i)));
+                    }
+                } else {
+                    writeToUiAppend(readResult, "getApplicationIdsList returned NULL");
+                }
+
+/*
+
                 byte getApplicationIdsCommand = (byte) 0x6a;
                 byte[] getApplicationIdsResponse = new byte[0];
                 try {
@@ -205,7 +205,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "app id 1: " + Utils.bytesToHex(applicationIdList.get(i)));
                 }
 
-
+*/
             }
         });
 
@@ -1086,12 +1086,84 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // don't forget to commit
                 responseData = new byte[2];
                 boolean commitSuccess = writeToFileCommit(readResult, responseData);
-                writeToUiAppend(readResult, "commit success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                writeToUiAppend(readResult, "commit success: " + commitSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!commitSuccess) {
                     writeToUiAppend(readResult, "commit was not successful, aborted");
+                }
+
+            }
+        });
+
+        btn16.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // generate bulk data
+                writeToUiAppend(readResult,"");
+                writeToUiAppend(readResult, "generate bulk data");
+
+                // first select application 00 00 00
+                byte[] responseData = new byte[2];
+                responseData = new byte[2];
+                boolean selectMasterApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectMasterApplication success: " + selectMasterApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectMasterApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectMasterApplication was not successful, aborted");
                     return;
                 }
 
+                // authenticate
+                responseData = new byte[2];
+                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, (byte) 0x00, AID_Master_Key0, responseData);
+                writeToUiAppend(readResult, "authenticateMasterApplication success: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateMasterSuccess) {
+                    writeToUiAppend(readResult, "the authenticationMasterApplication was not successful, aborted");
+                    return;
+                }
+
+                // generate 23 app ids
+                for (int i = 0; i < 23; i++) {
+                    byte[] aid = new byte[]{(byte) (0x00), (byte) 0x01, (byte) 0x02};
+                    aid[0] = (byte) i;
+
+                    // create the application
+                    boolean createApplicationSuccess = createApplicationDes(readResult, aid, (byte) 0x02, responseData);
+                    writeToUiAppend(readResult, "createApplication success: " + createApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+/*
+                    // select the application
+                    boolean selectApplicationSuccessL = selectApplicationDes(readResult, aid, responseData);
+                    writeToUiAppend(readResult, "selectApplication success: " + selectApplicationSuccessL + " with response: " + Utils.bytesToHex(responseData));
+*/
+                    /*
+                    // authenticate the application
+                    // authenticate with key 1
+                    responseData = new byte[2];
+                    // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
+                    boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, new byte[8], responseData);
+                    writeToUiAppend(readResult, "authenticateApplication success: " + authenticateSuccess + " with response: " + Utils.bytesToHex(responseData));
+                    if (!authenticateSuccess) {
+                        writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                        return;
+                    }
+
+                     */
+/*
+                    // create the cyclic file
+                    boolean createCyclicFileSuccess = createCyclicFile(readResult, (byte) 0x01, responseData);
+                    writeToUiAppend(readResult, "createCyclicFile success: " + createCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+*/
+                    /*
+                    // write a commit
+                    responseData = new byte[2];
+                    boolean commitSuccess = writeToFileCommit(readResult, responseData);
+                    writeToUiAppend(readResult, "commit success: " + commitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                    if (!commitSuccess) {
+                        writeToUiAppend(readResult, "commit was not successful, aborted");
+                        return;
+                    }
+                     */
+                }
+
+                writeToUiAppend(readResult, "bulk generation finished");
             }
         });
 
@@ -1225,6 +1297,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         if (applicationIdentifier.length != 3) return false;
 
         // create an application
+        writeToUiAppend(logTextView, "create the application " + Utils.bytesToHex(applicationIdentifier));
         byte createApplicationCommand = (byte) 0xca;
         byte applicationMasterKeySettings = (byte) 0x0f;
         byte[] createApplicationParameters = new byte[5];
@@ -1316,17 +1389,48 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             return null;
         }
         // if the read result is success we return the data received so far
-
-
-
-        // todo if there are more than 7 app on card there is an af response to get more data
-
-        byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
-        List<byte[]> applicationIdList = divideArray(applicationListBytes, 3);
-        for (int i = 0; i < applicationIdList.size(); i++) {
-            writeToUiAppend(readResult, "app id 1: " + Utils.bytesToHex(applicationIdList.get(i)));
+        if (checkResponse(getApplicationIdsResponse)) {
+            System.arraycopy(returnStatusBytes(getApplicationIdsResponse), 0, response, 0, 2);
+            byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+            applicationIdList = divideArray(applicationListBytes, 3);
+            return applicationIdList;
         }
-        return applicationIdList;
+        if (checkResponseMoreData(getApplicationIdsResponse)) {
+            byte getMoreDataCommand = (byte) 0x6a;
+            boolean readMoreData = true;
+            try {
+                while (readMoreData) {
+                    List<byte[]> applicationIdListTemp = new ArrayList<>();
+                    try {
+                        getApplicationIdsResponse = isoDep.transceive(wrapMessage(getMoreDataCommand, null));
+                    } catch (Exception e) {
+                        //throw new RuntimeException(e);
+                        writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+                        return null;
+                    }
+                    writeToUiAppend(logTextView, printData("getApplicationIdsResponse", getApplicationIdsResponse));
+                    if (checkResponse(getApplicationIdsResponse)) {
+                        // now we have received all data
+                        System.arraycopy(returnStatusBytes(getApplicationIdsResponse), 0, response, 0, 2);
+                        byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+                        applicationIdListTemp = divideArray(applicationListBytes, 3);
+                        readMoreData = false; // end the loop
+                        applicationIdList.addAll(applicationIdListTemp);
+                        return applicationIdList;
+                    }
+                    if (checkResponseMoreData(getApplicationIdsResponse)) {
+                        // some more data will follow, store temp data
+                        byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+                        applicationIdListTemp = divideArray(applicationListBytes, 3);
+                        applicationIdList.addAll(applicationIdListTemp);
+                        readMoreData = true;
+                    }
+                } // while (readMoreData) {
+            } catch (Exception e) {
+                writeToUiAppend(logTextView, "Exception failure: " + e.getMessage());
+            } // try
+        }
+        return null;
     }
 
     /**
@@ -1340,14 +1444,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
      * The size of a record is FIXED to 32 bytes
      * @param logTextView
      * @param fileNumber
-     * @param numberOfRecords - needs to be of value number + 1 for the spare record
      * @param response
      * @return
      */
-    private boolean createCyclicFile(TextView logTextView, byte fileNumber, byte numberOfRecords, byte[] response) {
+    private boolean createCyclicFile(TextView logTextView, byte fileNumber, byte[] response) {
         // create the CyclicRecordFile
         byte createCyclicFileCommand = (byte) 0xc0;
-        final byte RECORD_SIZE = (byte) 0x00;
+        final byte RECORD_SIZE = (byte) 0x20; // 32 bytes
         final byte NUMBER_OF_RECORDS = (byte) 0x06;
         byte commSettingsByte = 0; // plain communication without any encryption
                 /*
