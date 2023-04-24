@@ -361,7 +361,6 @@ public class DESFireEV1 {
 			newKey = Arrays.copyOfRange(plaintext, 0, 16);
 		}
 
-		System.out.println("*** DESFireEv1 changeKey before tweak when changing");
 		// tweak for when changing PICC master key
 		if (Arrays.equals(aid, new byte[3])) {
 			switch (type) {
@@ -385,8 +384,6 @@ public class DESFireEV1 {
 		byte[] tmpForCRC;
 		byte[] crc;
 		int addAesKeyVersionByte = type == DesfireKeyType.AES ? 1 : 0;
-
-		System.out.println("*** DESFireEv1 changeKey before switch (ktype)");
 
 		switch (ktype) {
 		case DES:
@@ -422,7 +419,6 @@ public class DESFireEV1 {
 			assert false : ktype; // should never be reached
 		}
 
-		System.out.println("*** DESFireEv1 changeKey byte[] apdu = new byte[5 + 1 + ciphertext.length + 1];");
 		byte[] apdu = new byte[5 + 1 + ciphertext.length + 1];
 		apdu[0] = (byte) 0x90;
 		apdu[1] = (byte) Command.CHANGE_KEY.getCode();
@@ -432,8 +428,9 @@ public class DESFireEV1 {
 		byte[] responseAPDU = transmit(apdu);
 		this.code = getSW2(responseAPDU);
 		feedback(apdu, responseAPDU);
-		// *** apdu:         90 C4 00 00 19 02 EC E3 E5 03 BB A6 D5 02 DC 57 F5 38 DD 50 4F 2E F2 46 A0 B7 82 08 54 01 00
-		// *** responseAPDU: 91 AE
+		// data for DES keys
+		// *** apdu:         90 C4 00 00 19 02 1D D7 C0 06 70 20 16 80 B0 93 C0 B5 0D 94 D0 65 42 75 D4 E6 38 99 5C 96 00
+		// *** responseAPDU: 91 00
 		System.out.println("*** DESFireEv1 changeKey after feedback(apdu...)");
 		System.out.println("*** apdu:         " + Utils.getHexString(apdu));
 		System.out.println("*** responseAPDU: " + Utils.getHexString(responseAPDU));

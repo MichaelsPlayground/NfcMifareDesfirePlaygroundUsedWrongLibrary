@@ -62,9 +62,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
-    byte[] tagIdByte, tagSignatureByte, publicKeyByte;
-    boolean signatureVerfied = false;
-    //NfcA nfcA;
+    byte[] tagIdByte;
     IsoDep isoDep;
 
     // vars for enhanced functions using libraries from https://github.com/skjolber/desfire-tools-for-android
@@ -72,25 +70,37 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private DesfireTag desfireTag;
     private DefaultIsoDepAdapter defaultIsoDepAdapter;
 
+    /**
+     * Note on all KEY data (important for DES/TDES keys only)
+     * A DES key has a length 64 bits (= 8 bytes) but only 56 bits are used for encryption, the remaining 8 bits are were
+     * used as parity bits and within DESFire as key version information.
+     * If you are using the 'original' key you will run into authentication issues.
+     * You should always strip of the parity bits by running the setKeyVersion command
+     * e.g. setKeyVersion(AID_DesLog_Key2_New, 0, AID_DesLog_Key2_New.length, (byte) 0x00);
+     * This will set the key version to '0x00' by setting all parity bits to '0x00'
+     */
     // some constants
-    private final byte[] applicationIdentifier_Master = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00};
-    private final byte[] applicationIdentifier_Master_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
-    private final byte applicationIdentifier_Master_Key0_Number = (byte) 0x00;
+    private final byte[] AID_Master = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00};
+    private final byte AID_Master_number_of_keys = (byte) 0x01;
+    private final byte[] AID_Master_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte AID_Master_Key0_Number = (byte) 0x00;
 
-    private final byte[] applicationIdentifier_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
-    private final byte[] applicationIdentifier_DesStandard_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte[] AID_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
+    private final byte AID_DesStandard_number_of_keys = (byte) 0x03;
+    private final byte[] AID_DesStandard_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
 
-    private final byte[] applicationIdentifier_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
-    private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3}; // A3 A8 A9
-    private final byte[] applicationIdentifier_DesLog_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
-    private final byte applicationIdentifier_DesLog_Key0_Number = (byte) 0x00;
-    private final byte[] applicationIdentifier_DesLog_Key1 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
-    private final byte[] applicationIdentifier_DesLog_Key1_NEW = Utils.hexStringToByteArray("3322119988776601"); // new key, lets work on this
-    private final byte applicationIdentifier_DesLog_Key1_Number = (byte) 0x01;
-    private final byte[] applicationIdentifier_DesLog_Key2 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
-    private final byte[] applicationIdentifier_DesLog_Key2_NEW = Utils.hexStringToByteArray("3322119988776602"); // new key, lets work on this
-    private final byte applicationIdentifier_DesLog_Key2_Number = (byte) 0x02;
-    private final byte fileNumberLogCyclicFile = (byte) 0x03;
+    private final byte[] AID_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
+    private final byte[] AID_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3}; // A3 A8 A9
+    private final byte[] AID_DesLog_Key0 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte AID_DesLog_Key0_Number = (byte) 0x00;
+    private final byte[] AID_DesLog_Key1 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte[] AID_DesLog_Key1_New = Utils.hexStringToByteArray("3322119988776601"); // new key, lets work on this
+    private final byte AID_DesLog_Key1_Number = (byte) 0x01;
+    private final byte[] AID_DesLog_Key2 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte[] AID_DesLog_Key2_New = Utils.hexStringToByteArray("3322119988776602"); // new key, lets work on this
+    private final byte[] AID_DesLog_Key2_New2 = Utils.hexStringToByteArray("3322119988776612"); // new key, lets work on this
+    private final byte AID_DesLog_Key2_Number = (byte) 0x02;
+    private final byte DesLogCyclicFileFileNumber = (byte) 0x03;
     private final byte numberOfRecordsLogCyclicFile = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
 
     @Override
@@ -121,54 +131,30 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // create application
+
                 // first select application 00 00 00
-                byte selectMasterfileApplicationCommand = (byte) 0x5a;
-                byte[] masterfileApplication = new byte[3]; // 00 00 00
-                byte[] selectMasterfileApplicationResponse = new byte[0];
-                try {
-                    selectMasterfileApplicationResponse = isoDep.transceive(wrapMessage(selectMasterfileApplicationCommand, masterfileApplication));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                byte[] responseData = new byte[2];
+                responseData = new byte[2];
+                boolean selectApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectApplication success: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
                 }
-                writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
-                // selectMasterfileApplicationResponse length: 2 data: 9100
 
                 // get master key settings
-                byte getKeySettingsCommand = (byte) 0x45;
-                byte[] getKeySettingsResponse = new byte[0];
-                try {
-                    getKeySettingsResponse = isoDep.transceive(wrapMessage(getKeySettingsCommand, null));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("getKeySettingsResponse", getKeySettingsResponse));
-                // getKeySettingsResponse length: 4 data: 0f 01 9100
-                //                                        0f = key settings
-                //                                           01 = max number of keys
+                responseData = new byte[2];
+                byte[] keySettings = getKeySettings(readResult, responseData);
+                writeToUiAppend(readResult, printData("keySettings", keySettings));
 
                 // create an application
-                byte createApplicationCommand = (byte) 0xca;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3};
-                byte applicationMasterKeySettings = (byte) 0x0f;
-                byte numberOfKeys = 0x03; // this value is for keys without any encryption, see Desfire EV Protocol
-                byte[] createApplicationParameters = new byte[5];
-                System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
-                createApplicationParameters[3] = applicationMasterKeySettings;
-                createApplicationParameters[4] = numberOfKeys;
-                writeToUiAppend(readResult, printData("createApplicationParameters", createApplicationParameters));
-
-                byte[] createApplicationResponse = new byte[0];
-                try {
-                    createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                responseData = new byte[2];
+                boolean createApplicationSuccess = createApplicationDes(readResult, AID_DesStandard, AID_DesStandard_number_of_keys, responseData);
+                writeToUiAppend(readResult, "createApplication success: " + createApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createApplicationSuccess) {
+                    writeToUiAppend(readResult, "the createApplication was not successful, aborted");
+                    return;
                 }
-                writeToUiAppend(readResult, printData("createApplicationResponse", createApplicationResponse));
-                // createApplicationResponse length: 2 data: 9100                                                9100
-                // second try: data 91de = duplicate error (application is existing)
             }
         });
 
@@ -176,7 +162,17 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // list applications
+
                 // first select application 00 00 00
+                byte[] responseData = new byte[2];
+                responseData = new byte[2];
+                boolean selectApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectApplication success: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
+                }
+  /*
                 byte selectApplicationCommand = (byte) 0x5a;
                 byte[] masterfileApplication = new byte[3]; // 00 00 00
                 byte[] selectMasterfileApplicationResponse = new byte[0];
@@ -187,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
                 writeToUiAppend(readResult, printData("selectMasterfileApplicationResponse", selectMasterfileApplicationResponse));
-
+*/
                 // get application ids
                 byte getApplicationIdsCommand = (byte) 0x6a;
                 byte[] getApplicationIdsResponse = new byte[0];
@@ -725,6 +721,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
                 }
                 writeToUiAppend(readResult, printData("formatPiccResponse", formatPiccResponse));
+                writeToUiAppend(readResult, "*** format card ***");
+                if (checkResponse(formatPiccResponse)) {
+                    writeToUiAppend(readResult, "The formatPicc was successful");
+                } else {
+                    writeToUiAppend(readResult, "The formatPicc has FAILED");
+                }
             }
         });
 
@@ -737,14 +739,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // create an application
                 byte numberOfKeys = (byte) 0x03;
                 byte[] responseData = new byte[2];
-                boolean success = createApplicationDes(readResult, applicationIdentifier_DesLog, numberOfKeys, responseData);
+                boolean success = createApplicationDes(readResult, AID_DesLog, numberOfKeys, responseData);
                 writeToUiAppend(readResult, "createApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (checkDuplicateError(responseData)) {
                     writeToUiAppend(readResult, "the application was not created as it already exists, proceed");
                 }
 
                 // select the application
-                success = selectApplicationDes(readResult, applicationIdentifier_DesLog, responseData);
+                success = selectApplicationDes(readResult, AID_DesLog, responseData);
                 writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
 
                 // todo any checks on response ?
@@ -753,7 +755,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 byte createCyclicFileCommand = (byte) 0xc0;
 
                 //byte fileNumber = (byte) 0x08;
-                byte fileNumber = fileNumberLogCyclicFile;
+                byte fileNumber = DesLogCyclicFileFileNumber;
                 //fileNumber = (byte) 0x09; // test with auth key 00
                 //byte numberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
                 byte sizeOfRecord = (byte) 0x20; // 0x20 = 32 bytes, fixed for this method
@@ -836,7 +838,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate own
                 responseData = new byte[2]; // todo work on this
                 // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
-                success = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_Key1, responseData);
+                success = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, responseData);
                 writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!success) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -854,7 +856,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 byte[] contentLength = new byte[]{(byte) (contentLengthInt & 0xFF), (byte) 0x00, (byte) 0x00};
                 byte[] content = contentString.getBytes(StandardCharsets.UTF_8);
                 byte[] writeFileParameters = new byte[(contentLengthInt + 7)];
-                writeFileParameters[0] = fileNumberLogCyclicFile;
+                writeFileParameters[0] = DesLogCyclicFileFileNumber;
                 System.arraycopy(offset, 0, writeFileParameters, 1, 3);
                 System.arraycopy(contentLength, 0, writeFileParameters, 4, 3);
                 System.arraycopy(content, 0, writeFileParameters, 7, contentLengthInt);
@@ -889,13 +891,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // select the application
                 byte[] responseData = new byte[2];
-                boolean success = selectApplicationDes(readResult, applicationIdentifier_DesLog, responseData);
+                boolean success = selectApplicationDes(readResult, AID_DesLog, responseData);
                 writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
 
                 // authenticate
                 responseData = new byte[2]; // todo work on this
                 // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_Key1, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, responseData);
                 writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -906,7 +908,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 for (int i = 0; i < 3; i++) {
                     // write
                     responseData = new byte[2];
-                    boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, fileNumberLogCyclicFile, responseData);
+                    boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, DesLogCyclicFileFileNumber, responseData);
                     writeToUiAppend(readResult, "writeToCyclicFile success: " + success + " with response: " + Utils.bytesToHex(responseData));
                     if (!writeToCyclicFileSuccess) {
                         writeToUiAppend(readResult, "writeToCyclicFile was not successful, aborted");
@@ -930,14 +932,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 //numberOfRecords[0] = (byte) 0x05;
                 for (int i = 0; i < 5; i++) {
                     recordNumber[0] = (byte) (i & 0xFF);
-                    byte[] readFileData = readFromCyclicFile(readResult, fileNumberLogCyclicFile, recordNumber, numberOfRecords, responseData, true);
+                    byte[] readFileData = readFromCyclicFile(readResult, DesLogCyclicFileFileNumber, recordNumber, numberOfRecords, responseData, true);
                     //writeToUiAppend(readResult, printData("readFileData", readFileData));
                     writeToUiAppend(readResult, "record " + i + " : " + new String(readFileData, StandardCharsets.UTF_8));
                     byte[] readFileStatus = returnStatusBytes(readFileData);
                     boolean readData = false;
                     if (readFileStatus[1] == (byte) 0xAF) readData = true;
                     while (readData == true) {
-                        readFileData = readFromCyclicFile(readResult, fileNumberLogCyclicFile, recordNumber, numberOfRecords, responseData, false);
+                        readFileData = readFromCyclicFile(readResult, DesLogCyclicFileFileNumber, recordNumber, numberOfRecords, responseData, false);
                         //writeToUiAppend(readResult, printData("readFileData", readFileData));
                         writeToUiAppend(readResult, "record " + i + " : " + new String(readFileData, StandardCharsets.UTF_8));
                         readFileStatus = returnStatusBytes(readFileData);
@@ -951,29 +953,53 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // change application key
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "changeAppKey");
+
+                // this is the manual way
+                // it is NOT WORKING because of missing encryption implementation in changeKey method
+/*
+                // select application
+                // select the application
+                byte[] responseData = new byte[2];
+                boolean success = selectApplicationDes(readResult, AID_DesLog, responseData);
+                writeToUiAppend(readResult, "changeAppKey selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate
+                responseData = new byte[2];
+                // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
+                // createApplicationDes:
+                // byte applicationMasterKeySettings = (byte) 0x0f; - the leftmost bits are '0' so it is the appMasterKey ('00') that has tto get used for authorization
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesLog_Key0_Number, AID_DesLog_Key0, responseData);
+                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateSuccess) {
+                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                    return;
+                }
+
+                // change the key
+                responseData = new byte[2];
+                // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
+                // createApplicationDes:
+                // byte applicationMasterKeySettings = (byte) 0x0f; - the leftmost bits are '0' so it is the appMasterKey ('00') that has tto get used for authorization
+                //boolean changeKeySuccess = changeApplicationKeyDes(readResult, AID_DesLog_Key2_Number, AID_DesLog_Key2_New, AID_DesLog_Key2, responseData);
+                boolean changeKeySuccess = changeApplicationKeyDes(readResult, AID_DesLog_Key2_Number, AID_DesLog_Key2, AID_DesLog_Key2_New, responseData);
+                writeToUiAppend(readResult, "changeKey success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!changeKeySuccess) {
+                    writeToUiAppend(readResult, "the changeKey was not successful, aborted");
+                    return;
+                }
+*/
 
 
-
-
-
-
-                // first way is to use DESFireEV1.java implementation
+                // for key changing use DESFireEV1.java implementation
                 DESFireEV1 desFireEV1 = new DESFireEV1();
                 try {
                     // set adapter
                     desFireEV1.setAdapter(defaultIsoDepAdapter);
 
-                    // select MasterFile
                     // select an application
-                    boolean sucSelectMasterApplication = desFireEV1.selectApplication(applicationIdentifier_Master);
-                    writeToUiAppend(readResult, "sucSelectMasterApplication: " + sucSelectMasterApplication);
-
-                    // authenticate MasterFile
-                    boolean sucAuthenticateMaster = desFireEV1.authenticate(applicationIdentifier_Master_Key0, (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
-                    writeToUiAppend(readResult, "suc in authMaster for " + sucAuthenticateMaster);
-
-                    // select an application
-                    boolean sucSelectApplication = desFireEV1.selectApplication(applicationIdentifier_DesLog);
+                    boolean sucSelectApplication = desFireEV1.selectApplication(AID_DesLog);
                     writeToUiAppend(readResult, "sucSelectApplication: " + sucSelectApplication);
 
                     // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
@@ -981,7 +1007,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     // byte applicationMasterKeySettings = (byte) 0x0f; - the leftmost bits are '0' so it is the appMasterKey ('00') that has tto get used for authorization
 
                     // authenticate with key 0
-                    boolean sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key0, applicationIdentifier_DesLog_Key0_Number, DESFireEV1.DesfireKeyType.DES);
+                    boolean sucAuthenticateAid = desFireEV1.authenticate(AID_DesLog_Key0, AID_DesLog_Key0_Number, DESFireEV1.DesfireKeyType.DES);
                     writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
 
                     // authenticate with key 1
@@ -989,15 +1015,29 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     //writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
 
                     // authenticate with key 2
-                    //sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key2, applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES);
+                    //boolean sucAuthenticateAid = desFireEV1.authenticate(applicationIdentifier_DesLog_Key2_NEW, applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES);
                     //writeToUiAppend(readResult, "suc in auth for " + sucAuthenticateAid);
 
                     // change the key
-                    boolean sucChange =  desFireEV1.changeKey(applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, applicationIdentifier_DesLog_Key2_NEW, applicationIdentifier_DesLog_Key2);
+                    // this is the real key used without any keyVersion bits. The new key is automatically stripped off the version bytes but not the old key
+                    setKeyVersion(AID_DesLog_Key2_New, 0, AID_DesLog_Key2_New.length, (byte) 0x00);
+                    boolean sucChange =  desFireEV1.changeKey(AID_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, AID_DesLog_Key2_New, AID_DesLog_Key2);
+                    //boolean sucChange =  desFireEV1.changeKey(applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, applicationIdentifier_DesLog_Key2, applicationIdentifier_DesLog_Key2_New);
+
+                    // this is the real key used without any keyVersion bits. The new key is automatically stripped off the version bytes but not the old key
+                    setKeyVersion(AID_DesLog_Key2_New, 0, AID_DesLog_Key2_New.length, (byte) 0x00);
+                    //boolean sucChange =  desFireEV1.changeKey(AID_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, AID_DesLog_Key2, AID_DesLog_Key2_New);
+
                     writeToUiAppend(readResult, "sucChangeKey: " + sucChange);
                     // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
                     //boolean suc = desFireEV1.authenticate(applicationIdentifier_DesLog_key1, (byte) 0x01, DESFireEV1.DesfireKeyType.DES);
                     //writeToUiAppend(readResult, "suc in auth for " + suc);
+
+                    // set the keyVersion to 0 for a given key
+                    //byte[] applicationIdentifier_DesLog_Key2_New_keyVersion0 = AID_DesLog_Key2_New.clone();
+                    //writeToUiAppend(readResult, printData("applicationIdentifier_DesLog_Key2_New_keyVersion0 old", applicationIdentifier_DesLog_Key2_New_keyVersion0));
+                    //setKeyVersion(applicationIdentifier_DesLog_Key2_New_keyVersion0, 0, applicationIdentifier_DesLog_Key2_New_keyVersion0.length, (byte) 0x00);
+                    //writeToUiAppend(readResult, printData("applicationIdentifier_DesLog_Key2_New_keyVersion0 new", applicationIdentifier_DesLog_Key2_New_keyVersion0));
 
                 } catch (IOException e) {
                     //throw new RuntimeException(e);
@@ -1008,8 +1048,6 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "Exception: " + e.getMessage());
                     return;
                 }
-
-
             }
         });
 
@@ -1017,11 +1055,47 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             @Override
             public void onClick(View view) {
                 // clear cyclic file
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "clear cyclic file");
+
+                // select application
+                // select the application
+                byte[] responseData = new byte[2];
+                boolean success = selectApplicationDes(readResult, AID_DesLog, responseData);
+                writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate with key 1
+                responseData = new byte[2];
+                // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesLog_Key1_Number, AID_DesLog_Key1, responseData);
+                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateSuccess) {
+                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                    return;
+                }
+
+                // clear the file
+                responseData = new byte[2];
+                boolean clearCyclicFileSuccess = clearRecordFile(readResult, DesLogCyclicFileFileNumber, responseData);
+                writeToUiAppend(readResult, "clearCyclicFile success: " + clearCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!clearCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "the clearCyclicFile was not successful, aborted");
+                    return;
+                }
+
+                // don't forget to commit
+                responseData = new byte[2];
+                boolean commitSuccess = writeToFileCommit(readResult, responseData);
+                writeToUiAppend(readResult, "commit success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!commitSuccess) {
+                    writeToUiAppend(readResult, "commit was not successful, aborted");
+                    return;
+                }
+
             }
         });
 
 
-        // todo clear data
         // todo change key values
         // todo change numberOfKeys to '05 + 1'
         //
@@ -1030,6 +1104,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
     /**
      * start section for ready to use commands
+     */
+
+    /**
+     * section for authentication with DES
      */
 
     private boolean authenticateApplicationDes(TextView logTextView, byte keyId, byte[] key, byte[] response) {
@@ -1137,6 +1215,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         return false;
     }
 
+    /**
+     * section for application handling
+     */
 
     private boolean createApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte numberOfKeys, byte[] response) {
         if (logTextView == null) return false;
@@ -1155,7 +1236,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         try {
             createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
             writeToUiAppend(logTextView, printData("createApplicationResponse", createApplicationResponse));
-            System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+            System.arraycopy(returnStatusBytes(createApplicationResponse), 0, response, 0, 2);
+            //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
             if (checkResponse(createApplicationResponse)) {
                 return true;
             } else {
@@ -1164,9 +1246,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "createApplicationDes tranceive failed: " + e.getMessage());
+            return false;
         }
-        System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
-        return false;
     }
 
     private boolean selectApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte[] response) {
@@ -1175,8 +1256,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         byte[] selectApplicationResponse = new byte[0];
         try {
             selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
-            writeToUiAppend(logTextView, printData("createApplicationResponse", selectApplicationResponse));
-            System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
+            writeToUiAppend(logTextView, printData("selectApplicationResponse", selectApplicationResponse));
+            System.arraycopy(returnStatusBytes(selectApplicationResponse), 0, response, 0, 2);
+            //System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
             if (checkResponse(selectApplicationResponse)) {
                 return true;
             } else {
@@ -1185,10 +1267,149 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "selectApplicationDes tranceive failed: " + e.getMessage());
+            return false;
         }
-        //writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
-        System.arraycopy(selectApplicationResponse, 0, response, 0, selectApplicationResponse.length);
-        return false;
+    }
+
+    private byte[] getKeySettings(TextView logTextView, byte[] response) {
+        // getKeySettingsResponse length: 4 data: 0f 01 9100
+        //                                        0f = key settings
+        //                                           01 = max number of keys
+        // get master key settings
+        byte getKeySettingsCommand = (byte) 0x45;
+        byte[] getKeySettingsResponse = new byte[0];
+        try {
+            getKeySettingsResponse = isoDep.transceive(wrapMessage(getKeySettingsCommand, null));
+            writeToUiAppend(logTextView, printData("getKeySettingsResponse", getKeySettingsResponse));
+            System.arraycopy(returnStatusBytes(getKeySettingsResponse), 0, response, 0, 2);
+            return getKeySettingsResponse;
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private List<byte[]> getApplicationIdsList(TextView logTextView, byte[] response) {
+        // get application ids
+        List<byte[]> applicationIdList = new ArrayList<>();
+        byte getApplicationIdsCommand = (byte) 0x6a;
+        byte[] getApplicationIdsResponse = new byte[0];
+        try {
+            getApplicationIdsResponse = isoDep.transceive(wrapMessage(getApplicationIdsCommand, null));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return null;
+        }
+        writeToUiAppend(logTextView, printData("getApplicationIdsResponse", getApplicationIdsResponse));
+        // getApplicationIdsResponse length: 2 data: 9100 = no applications on card
+        // getApplicationIdsResponse length: 5 data: a1a2a3 9100
+        // there might be more application on the card that fit into one frame:
+        // getApplicationIdsResponse length: 5 data: a1a2a3 91AF
+        // AF at the end is indicating more data
+
+        // check that result if 0x9100 (success) or 0x91AF (success but more data)
+        if ((!checkResponse(getApplicationIdsResponse)) && (!checkResponseMoreData(getApplicationIdsResponse))) {
+            // something got wrong (e.g. missing authentication ?)
+            writeToUiAppend(logTextView, "there was an unexpected response");
+            return null;
+        }
+        // if the read result is success we return the data received so far
+
+
+
+        // todo if there are more than 7 app on card there is an af response to get more data
+
+        byte[] applicationListBytes = Arrays.copyOf(getApplicationIdsResponse, getApplicationIdsResponse.length - 2);
+        List<byte[]> applicationIdList = divideArray(applicationListBytes, 3);
+        for (int i = 0; i < applicationIdList.size(); i++) {
+            writeToUiAppend(readResult, "app id 1: " + Utils.bytesToHex(applicationIdList.get(i)));
+        }
+        return applicationIdList;
+    }
+
+    /**
+     * section for cyclic files
+     */
+
+    /**
+     * create cyclic file - this is using a FIXED key number 1 for read and write access
+     * So don't forget that your application does need a minimum of 2 keys
+     * The number of records is FIXED to 6 (5 entries + 1 spare entry)
+     * The size of a record is FIXED to 32 bytes
+     * @param logTextView
+     * @param fileNumber
+     * @param numberOfRecords - needs to be of value number + 1 for the spare record
+     * @param response
+     * @return
+     */
+    private boolean createCyclicFile(TextView logTextView, byte fileNumber, byte numberOfRecords, byte[] response) {
+        // create the CyclicRecordFile
+        byte createCyclicFileCommand = (byte) 0xc0;
+        final byte RECORD_SIZE = (byte) 0x00;
+        final byte NUMBER_OF_RECORDS = (byte) 0x06;
+        byte commSettingsByte = 0; // plain communication without any encryption
+                /*
+                M0775031 DESFIRE
+                Plain Communication = 0;
+                Plain communication secured by DES/3DES MACing = 1;
+                Fully DES/3DES enciphered communication = 3;
+                 */
+        byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
+        // here we are using key 1 for every access !
+        byte accessRightsRwCar = (byte) 0x11; // Read&Write Access & ChangeAccessRights
+        byte accessRightsRW = (byte) 0x11; // Read Access & Write Access
+                /*
+                There are four different Access Rights (2 bytes for each file) stored for each file within
+                each application:
+                - Read Access
+                - Write Access
+                - Read&Write Access
+                - ChangeAccessRights
+                 */
+
+        // create a value file in the new application: fileNo=6, cs=3
+        //ar1 = 0x00;  // RW|CAR
+        //ar2 = 0x00;  // R|W
+
+        /* @param payload	10-byte array with the following contents:
+         * 					<br>file number (1 byte),
+         * 					<br>communication settings (1 byte),
+         * 					<br>access rights (2 bytes: RW||CAR||R||W),
+         * 					<br>size of a single record size (3 bytes LSB),
+         * 					<br>maximum amount of records (3 bytes LSB)
+         * @return			{@code true} on success, {@code false} otherwise
+         * @throws IOException
+         */
+
+        byte[] createCyclicFileParameters = new byte[10]; // just to show the length
+        createCyclicFileParameters = new byte[]{
+                fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
+                RECORD_SIZE, 0, 0,   // size of record fixed to dec 32
+                NUMBER_OF_RECORDS, 0, 0 // maximum amount of records, fixed to dec 6
+        };
+
+        writeToUiAppend(logTextView, printData("createCyclicFileParameters", createCyclicFileParameters));
+        byte[] createCyclicFileResponse = new byte[0];
+        try {
+            createCyclicFileResponse = isoDep.transceive(wrapMessage(createCyclicFileCommand, createCyclicFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        System.arraycopy(returnStatusBytes(createCyclicFileResponse), 0, response, 0, 2);
+        writeToUiAppend(logTextView, printData("createCyclicFileResponse", createCyclicFileResponse));
+        if (checkDuplicateError(createCyclicFileResponse)) {
+            writeToUiAppend(logTextView, "the file was not created as it already exists, proceed");
+            return true;
+        }
+        if (checkResponse(createCyclicFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     private boolean writeToCyclicFile(TextView logTextView, byte fileNumber, byte[] response) {
@@ -1214,6 +1435,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
         }
         writeToUiAppend(logTextView, printData("writeFileResponse", writeFileResponse));
         System.arraycopy(returnStatusBytes(writeFileResponse), 0, response, 0, 2);
@@ -1233,6 +1455,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
         }
         writeToUiAppend(logTextView, printData("commitResponse", commitResponse));
         System.arraycopy(returnStatusBytes(commitResponse), 0, response, 0, 2);
@@ -1246,9 +1469,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private byte[] readFromCyclicFile(TextView logTextView, byte fileNumber, byte[] recordNumber, byte[] numberOfRecords, byte[] response, boolean firstRun) {
         // read from to the CyclicFile
         byte[] readFileParameters = new byte[7];
-        byte writeFileCommand;
+        byte readFileCommand;
         if (firstRun) {
-            writeFileCommand = (byte) 0xbb;
+            readFileCommand = (byte) 0xbb;
             // byte fileNumberLogCyclicFile; // is defined as constant
             // File No
             //Record number (3 bytes)
@@ -1260,28 +1483,82 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             writeToUiAppend(logTextView, printData("readFileParameters", readFileParameters));
         } else {
             // this is the follow up part after a ... 0xAF response
-            writeFileCommand = (byte) 0xaf;
+            readFileCommand = (byte) 0xaf;
             readFileParameters = null;
         }
         byte[] readFileResponse = new byte[0];
         try {
-            readFileResponse = isoDep.transceive(wrapMessage(writeFileCommand, readFileParameters));
+            readFileResponse = isoDep.transceive(wrapMessage(readFileCommand, readFileParameters));
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
         }
-        //writeToUiAppend(logTextView, printData("readFileResponse", readFileResponse));
-        //System.arraycopy(writeFileResponse, 0, response, 0, writeFileResponse.length);
-        /*
-        if (checkResponse(writeFileResponse)) {
+        return readFileResponse;
+    }
+
+    private boolean clearRecordFile(TextView logTextView, byte fileNumber, byte[] response) {
+        // clear the CyclicFile
+        byte clearFileCommand = (byte) 0xeb;
+        byte[] clearFileParameters = new byte[1];
+        clearFileParameters[0] = fileNumber;
+        byte[] clearFileResponse;
+        try {
+            clearFileResponse = isoDep.transceive(wrapMessage(clearFileCommand, clearFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        writeToUiAppend(logTextView, printData("clearFileResponse", clearFileResponse));
+        System.arraycopy(returnStatusBytes(clearFileResponse), 0, response, 0, 2);
+        if (checkResponse(clearFileResponse)) {
             return true;
         } else {
             return false;
         }
-
-         */
-        return readFileResponse;
     }
+
+    // THIS IS NOT WORKING BECAUSE OF MISSING ENCRYPTION !!!
+    private boolean changeApplicationKeyDes(TextView logTextView, byte keyNumber, byte[] newKey, byte[] oldKey, byte[] response) {
+        // some checks to avoid any bricked tags...
+        if (newKey == null) return false;
+        if (oldKey == null) return false;
+        if (newKey.length != 8) return false; // des key length is 8
+        if (oldKey.length != 8) return false; // des key length is 8
+        if ((keyNumber < 0) | (keyNumber > 0x0d)) return false; // 14 keys are allowed, 0..13 dec
+
+        byte changeKeyCommand = (byte) 0xc4;
+
+        // this is the apdu from DESFireEv1 changeKey for a DES key
+        // apdu: 90 C4 00 00 19 02 1D D7 C0 06 70 20 16 80 B0 93 C0 B5 0D 94 D0 65 42 75 D4 E6 38 99 5C 96 00
+        //                   19 = 25 bytes data
+        //                      02 ..                                                 24 bytes       5c
+        //                                                                                              96 crc ?
+
+        byte[] changeKeyParameters = new byte[17];
+        changeKeyParameters[0] = keyNumber;
+        System.arraycopy(newKey, 0, changeKeyParameters, 1, 3);
+        System.arraycopy(oldKey, 0, changeKeyParameters, 4, 3);
+        writeToUiAppend(logTextView, printData("changeKeyParameters", changeKeyParameters));
+        byte[] changeKeyResponse = new byte[0];
+        try {
+            changeKeyResponse = isoDep.transceive(wrapMessage(changeKeyCommand, changeKeyParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+        }
+        writeToUiAppend(logTextView, printData("changeKeyResponse", changeKeyResponse));
+        System.arraycopy(returnStatusBytes(changeKeyResponse), 0, response, 0, 2);
+        if (checkResponse(changeKeyResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+
+
+
 
 
     /**
@@ -1298,10 +1575,31 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             return false;
         } // not ok
         int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
-        if (status != 0x9100) {
-            return false;
-        } else {
+        if (status == 0x9100) {
             return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * checks if the response has an 0x'91AF' at the end means success
+     * but there are more data frames available
+     * if any other trailing bytes show up the method returns false
+     *
+     * @param data
+     * @return
+     */
+    private boolean checkResponseMoreData(@NonNull byte[] data) {
+        // simple sanity check
+        if (data.length < 2) {
+            return false;
+        } // not ok
+        int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
+        if (status == 0x91AF) {
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -1327,6 +1625,26 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             return false;
         } else {
             return true;
+        }
+    }
+
+    /**
+     * Set the version on a DES key. Each least significant bit of each byte of
+     * the DES key, takes one bit of the version. Since the version is only
+     * one byte, the information is repeated if dealing with 16/24-byte keys.
+     *
+     * @param a			1K/2K/3K 3DES
+     * @param offset	start position of the key within a
+     * @param length	key length
+     * @param version	the 1-byte version
+     */
+    // source: nfcjLib
+    private static void setKeyVersion(byte[] a, int offset, int length, byte version) {
+        if (length == 8 || length == 16 || length == 24) {
+            for (int i = offset + length - 1, j = 0; i >= offset; i--, j = (j + 1) % 8) {
+                a[i] &= 0xFE;
+                a[i] |= ((version >>> j) & 0x01);
+            }
         }
     }
 
