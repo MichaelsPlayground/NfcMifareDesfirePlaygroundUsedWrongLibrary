@@ -59,7 +59,7 @@ import nfcjlib.core.DESFireEV1;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte, tagSignatureByte, publicKeyByte;
@@ -75,9 +75,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     // some constants
     private final byte[] applicationIdentifier_DesStandard = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa1};
     private final byte[] applicationIdentifier_DesValue = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa2};
-    private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3};
-    private final byte[] applicationIdentifier_DesLog_key1 = Utils.hexStringToByteArray("000000000000"); // default key, lets work on this
+    private final byte[] applicationIdentifier_DesLog = new byte[]{(byte) 0xa9, (byte) 0xa8, (byte) 0xa3}; // A3 A8 A9
+    private final byte[] applicationIdentifier_DesLog_Key1 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte[] applicationIdentifier_DesLog_Key1_NEW = Utils.hexStringToByteArray("3322119988776601"); // new key, lets work on this
+    private final byte applicationIdentifier_DesLog_Key1_Number = (byte) 0x01;
+    private final byte[] applicationIdentifier_DesLog_Key2 =     Utils.hexStringToByteArray("0000000000000000"); // default key, lets work on this
+    private final byte[] applicationIdentifier_DesLog_Key2_NEW = Utils.hexStringToByteArray("3322119988776602"); // new key, lets work on this
+    private final byte applicationIdentifier_DesLog_Key2_Number = (byte) 0x02;
     private final byte fileNumberLogCyclicFile = (byte) 0x03;
+    private final byte numberOfRecordsLogCyclicFile = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,6 +105,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn11 = findViewById(R.id.btn11);
         btn12 = findViewById(R.id.btn12);
         btn13 = findViewById(R.id.btn13);
+        btn14 = findViewById(R.id.btn14);
+        btn15 = findViewById(R.id.btn15);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -733,25 +741,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // todo any checks on response ?
 
-                /*
-                responseData = new byte[2]; // todo work on this
-                // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
-                success = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_key1, responseData);
-                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
-                if (!success) {
-                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
-                    return;
-                }
-
-                 */
-
                 // create the CyclicRecordFile
                 byte createCyclicFileCommand = (byte) 0xc0;
 
                 //byte fileNumber = (byte) 0x08;
                 byte fileNumber = fileNumberLogCyclicFile;
                 //fileNumber = (byte) 0x09; // test with auth key 00
-                byte numberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
+                //byte numberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
                 byte sizeOfRecord = (byte) 0x20; // 0x20 = 32 bytes, fixed for this method
                 byte commSettingsByte = 0; // todo check, this should be plain communication without any encryption
                 /*
@@ -791,7 +787,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 createCyclicFileParameters = new byte[]{
                         fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
                         sizeOfRecord, 0, 0,   // size of record fixed to dec 32
-                        numberOfRecords, 0, 0 // maximum amount of records, fixed to dec 5
+                        numberOfRecordsLogCyclicFile, 0, 0 // maximum amount of records, fixed to dec 5
                 };
 
                 writeToUiAppend(readResult, printData("createCyclicFileParameters", createCyclicFileParameters));
@@ -807,14 +803,15 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "the file was not created as it already exists, proceed");
                 }
 
-                // do the auth with DesfireEv1
+                // do the auth with DesfireEv1 (working
+                /*
                 DESFireEV1 desFireEV1 = new DESFireEV1();
                 writeToUiAppend(readResult, "*** authenticate with DesfireEv1 ***");
                 try {
                     // set adapter
                     desFireEV1.setAdapter(defaultIsoDepAdapter);
                     // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
-                    boolean suc = desFireEV1.authenticate(applicationIdentifier_DesLog_key1, (byte) 0x01, DESFireEV1.DesfireKeyType.TDES);
+                    boolean suc = desFireEV1.authenticate(applicationIdentifier_DesLog_key1, (byte) 0x01, DESFireEV1.DesfireKeyType.DES);
                     writeToUiAppend(readResult, "suc in auth for " + suc);
 
                 } catch (IOException e) {
@@ -826,7 +823,17 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "Exception: " + e.getMessage());
                     return;
                 }
+                 */
 
+                // authenticate own
+                responseData = new byte[2]; // todo work on this
+                // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
+                success = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_Key1, responseData);
+                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!success) {
+                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                    return;
+                }
 
                 // write to the CyclicFile
                 byte writeFileCommand = (byte) 0x3b;
@@ -867,6 +874,123 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             }
         });
 
+        btn13.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // append 3 log entries and display data
+
+                // select the application
+                byte[] responseData = new byte[2];
+                boolean success = selectApplicationDes(readResult, applicationIdentifier_DesLog, responseData);
+                writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate
+                responseData = new byte[2]; // todo work on this
+                // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, applicationIdentifier_DesLog_Key1, responseData);
+                writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateSuccess) {
+                    writeToUiAppend(readResult, "the authentication was not successful, aborted");
+                    return;
+                }
+
+                // write 3 times to cyclic file
+                for (int i = 0; i < 3; i++) {
+                    // write
+                    responseData = new byte[2];
+                    boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, fileNumberLogCyclicFile, responseData);
+                    writeToUiAppend(readResult, "writeToCyclicFile success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                    if (!writeToCyclicFileSuccess) {
+                        writeToUiAppend(readResult, "writeToCyclicFile was not successful, aborted");
+                        return;
+                    }
+                    // commit
+                    responseData = new byte[2];
+                    boolean writeToFileCommitSuccess = writeToFileCommit(readResult, responseData);
+                    writeToUiAppend(readResult, "writeToFileCommit success: " + success + " with response: " + Utils.bytesToHex(responseData));
+                    if (!writeToFileCommitSuccess) {
+                        writeToUiAppend(readResult, "writeToFileCommit was not successful, aborted");
+                        return;
+                    }
+                }
+
+                // read cyclic file data
+                // define some data
+                byte[] recordNumber = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // record 0 is the youngest record
+                byte[] numberOfRecords = new byte[]{(byte) 0x01, (byte) 0x00, (byte) 0x00}; // read just one record
+                //numberOfRecords[0] = numberOfRecordsLogCyclicFile;
+                //numberOfRecords[0] = (byte) 0x05;
+                for (int i = 0; i < 5; i++) {
+                    recordNumber[0] = (byte) (i & 0xFF);
+                    byte[] readFileData = readFromCyclicFile(readResult, fileNumberLogCyclicFile, recordNumber, numberOfRecords, responseData, true);
+                    //writeToUiAppend(readResult, printData("readFileData", readFileData));
+                    writeToUiAppend(readResult, "record " + i + " : " + new String(readFileData, StandardCharsets.UTF_8));
+                    byte[] readFileStatus = returnStatusBytes(readFileData);
+                    boolean readData = false;
+                    if (readFileStatus[1] == (byte) 0xAF) readData = true;
+                    while (readData == true) {
+                        readFileData = readFromCyclicFile(readResult, fileNumberLogCyclicFile, recordNumber, numberOfRecords, responseData, false);
+                        //writeToUiAppend(readResult, printData("readFileData", readFileData));
+                        writeToUiAppend(readResult, "record " + i + " : " + new String(readFileData, StandardCharsets.UTF_8));
+                        readFileStatus = returnStatusBytes(readFileData);
+                        if (readFileStatus[1] != (byte) 0xAF) readData = false;
+                    }
+                }
+            }
+        });
+
+        btn14.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // change application key
+
+                // first way is to use DESFireEV1.java implementation
+                DESFireEV1 desFireEV1 = new DESFireEV1();
+                try {
+                    // set adapter
+                    desFireEV1.setAdapter(defaultIsoDepAdapter);
+
+                    // select an application
+                    boolean sucSelectApplication = desFireEV1.selectApplication(applicationIdentifier_DesLog);
+                    writeToUiAppend(readResult, "sucSelectApplication: " + sucSelectApplication);
+
+                    // authenticate with key 1
+                    boolean sucAuthenticate = desFireEV1.authenticate(applicationIdentifier_DesLog_Key1, (byte) 0x01, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "suc in auth for " + sucAuthenticate);
+
+                    // change the key
+                    boolean sucChange =  desFireEV1.changeKey(applicationIdentifier_DesLog_Key2_Number, DESFireEV1.DesfireKeyType.DES, applicationIdentifier_DesLog_Key2_NEW, applicationIdentifier_DesLog_Key2);
+                    writeToUiAppend(readResult, "sucChangeKey: " + sucChange);
+                    // public boolean authenticate(byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
+                    //boolean suc = desFireEV1.authenticate(applicationIdentifier_DesLog_key1, (byte) 0x01, DESFireEV1.DesfireKeyType.DES);
+                    //writeToUiAppend(readResult, "suc in auth for " + suc);
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                    return;
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "Exception: " + e.getMessage());
+                    return;
+                }
+
+
+            }
+        });
+
+        btn15.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // clear cyclic file
+            }
+        });
+
+
+        // todo clear data
+        // todo change key values
+        // todo change numberOfKeys to '05 + 1'
+        //
 
     }
 
@@ -1033,6 +1157,98 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         return false;
     }
 
+    private boolean writeToCyclicFile(TextView logTextView, byte fileNumber, byte[] response) {
+        // write to the CyclicFile
+        byte writeFileCommand = (byte) 0x3b;
+        // byte fileNumberLogCyclicFile; // is defined as constant
+        byte[] offset = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // write to the beginning
+        byte[] dataLength;
+        String contentString = "Entry from " + Utils.getTimestamp(); // timestamp is 19 characters long
+        int contentLengthInt = contentString.length();
+        // todo be more universal with this. The created record size is 32 so this data is fitting into one record
+        byte[] contentLength = new byte[]{(byte) (contentLengthInt & 0xFF), (byte) 0x00, (byte) 0x00};
+        byte[] content = contentString.getBytes(StandardCharsets.UTF_8);
+        byte[] writeFileParameters = new byte[(contentLengthInt + 7)];
+        writeFileParameters[0] = fileNumber;
+        System.arraycopy(offset, 0, writeFileParameters, 1, 3);
+        System.arraycopy(contentLength, 0, writeFileParameters, 4, 3);
+        System.arraycopy(content, 0, writeFileParameters, 7, contentLengthInt);
+        writeToUiAppend(logTextView, printData("writeFileParameters", writeFileParameters));
+        byte[] writeFileResponse = new byte[0];
+        try {
+            writeFileResponse = isoDep.transceive(wrapMessage(writeFileCommand, writeFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+        }
+        writeToUiAppend(logTextView, printData("writeFileResponse", writeFileResponse));
+        System.arraycopy(returnStatusBytes(writeFileResponse), 0, response, 0, 2);
+        if (checkResponse(writeFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private boolean writeToFileCommit(TextView logTextView, byte[] response) {
+        // don't forget to commit all changes
+        byte commitCommand = (byte) 0xc7;
+        byte[] commitResponse = new byte[0];
+        try {
+            commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+        }
+        writeToUiAppend(logTextView, printData("commitResponse", commitResponse));
+        System.arraycopy(returnStatusBytes(commitResponse), 0, response, 0, 2);
+        if (checkResponse(commitResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private byte[] readFromCyclicFile(TextView logTextView, byte fileNumber, byte[] recordNumber, byte[] numberOfRecords, byte[] response, boolean firstRun) {
+        // read from to the CyclicFile
+        byte[] readFileParameters = new byte[7];
+        byte writeFileCommand;
+        if (firstRun) {
+            writeFileCommand = (byte) 0xbb;
+            // byte fileNumberLogCyclicFile; // is defined as constant
+            // File No
+            //Record number (3 bytes)
+            //Number of records (3 bytes)
+            //byte[] readFileParameters = new byte[7];
+            readFileParameters[0] = fileNumber;
+            System.arraycopy(recordNumber, 0, readFileParameters, 1, 3);
+            System.arraycopy(numberOfRecords, 0, readFileParameters, 4, 3);
+            writeToUiAppend(logTextView, printData("readFileParameters", readFileParameters));
+        } else {
+            // this is the follow up part after a ... 0xAF response
+            writeFileCommand = (byte) 0xaf;
+            readFileParameters = null;
+        }
+        byte[] readFileResponse = new byte[0];
+        try {
+            readFileResponse = isoDep.transceive(wrapMessage(writeFileCommand, readFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+        }
+        //writeToUiAppend(logTextView, printData("readFileResponse", readFileResponse));
+        //System.arraycopy(writeFileResponse, 0, response, 0, writeFileResponse.length);
+        /*
+        if (checkResponse(writeFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+
+         */
+        return readFileResponse;
+    }
+
 
     /**
      * checks if the response has an 0x'9100' at the end means success
@@ -1053,6 +1269,10 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } else {
             return true;
         }
+    }
+
+    private byte[] returnStatusBytes(byte[] data) {
+        return Arrays.copyOfRange(data, (data.length - 2), data.length);
     }
 
     /**
