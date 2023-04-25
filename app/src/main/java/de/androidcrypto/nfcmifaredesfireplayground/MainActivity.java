@@ -1358,7 +1358,7 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     writeToUiAppend(readResult, "writeCycCommit: " + writeCycCommit + " response: " + Utils.bytesToHex(responseData));
 
                     // now desfire method to read
-                    byte[] dataRead = desfire.readData(fileNumber, 0, 32);
+                    byte[] dataRead = desfire.readData(fileNumber, 0, 1);
                     writeToUiAppend(readResult, printData("dataRead", dataRead));
                     if (dataRead != null) {
                         writeToUiAppend(readResult, new String(dataRead, StandardCharsets.UTF_8));
@@ -1367,7 +1367,7 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     // my manua comm: 90 bb 0000 07 04 04000001000000
 
                     // now desfire method to read second try
-                    byte[] dataRead2 = desfire.readRecords(fileNumber, 0, 32);
+                    byte[] dataRead2 = desfire.readRecords(fileNumber, 0, 1);
                     writeToUiAppend(readResult, printData("dataRead2", dataRead2));
                     if (dataRead2 != null) {
                         writeToUiAppend(readResult, new String(dataRead2, StandardCharsets.UTF_8));
@@ -1408,7 +1408,96 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                 // prepare card for AES
 
                 writeToUiAppend(readResult, "");
-                writeToUiAppend(readResult, "prepairing the card for AES usage (format, change masterKey to aes");
+                writeToUiAppend(readResult, "preparing the card for AES usage (format, change masterKey to aes");
+
+                DESFireEV1 desfire = new DESFireEV1();
+                try {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    byte[] aid = Utils.hexStringToByteArray("c3c2c1");
+                    byte[] desKey = new byte[8];
+                    byte[] aesKey = new byte[16];
+                    byte aesKeyNumberRW = 0;
+                    byte aesKeyNumberR = 1;
+                    byte aesKeyNumberW = 2;
+                    byte numberOfKeysDes = (byte) 0x03; // 3 DES keys
+                    byte numberOfKeysAes = (byte) 0x83; // 3 AES keys
+
+                    byte aesFileNumberStandard = (byte) 0x01;
+                    byte aesFileNumberValue = (byte) 0x02;
+                    byte aesFileNumberCircle = (byte) 0x03;
+                    byte[] dataToWrite = "some data".getBytes(StandardCharsets.UTF_8);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[]{0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult, "selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // auth
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(desKey, (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    //boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult, "authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create application
+                    byte[] responseData = new byte[2];
+                    //boolean createApplication = createApplicationDes(readResult, aid, numberOfKeys, responseData);
+                    boolean createApplication = createApplicationAes(readResult, aid, numberOfKeysAes, responseData);
+
+                    writeToUiAppend(readResult, "createApplication: " + createApplication + " response: " + Utils.bytesToHex(responseData));
+
+                    // select this application
+                    responseData = new byte[2];
+                    boolean success = selectApplicationDes(readResult, aid, responseData);
+                    writeToUiAppend(readResult, "selectApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
+
+                    // authenticate with desfire method
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    boolean authenticateApplicationSuccess = desfire.authenticate(aesKey, aesKeyNumberRW, DESFireEV1.DesfireKeyType.AES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // create the standard file
+                    responseData = new byte[2];
+                    boolean createStandardFileSuccess = createStandardFile(readResult, aesFileNumberStandard    , responseData);
+                    writeToUiAppend(readResult, "createStandardFile result: " + createStandardFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                    if (!createStandardFileSuccess) {
+                        writeToUiAppend(readResult, "the createStandardFile was not successful, aborted");
+                        return;
+                    }
+
+                    // write to standard file
+                    responseData = new byte[2];
+                    boolean writeStandardFileSuccess = writeToStandardFile(readResult, DesStandardFileFileNumber1, dataToWrite, responseData);
+                    writeToUiAppend(readResult, "writeStandardFile result: " + writeStandardFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                    if (!writeStandardFileSuccess) {
+                        writeToUiAppend(readResult, "the writeStandardFile was not successful, aborted");
+                        return;
+                    }
+
+
+
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "Exception: " + e.getMessage());
+                    writeToUiAppend(readResult, "Stack: " + Arrays.toString(e.getStackTrace()));
+                    System.out.println(Arrays.toString(e.getStackTrace()));
+                }
 
                 /*
                 code from https://github.com/andrade/nfcjlib/blob/master/src/nfcjlib/sample/MDF1.java
@@ -1703,6 +1792,38 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
      */
 
     private boolean createApplicationDes(TextView logTextView, byte[] applicationIdentifier, byte numberOfKeys, byte[] response) {
+        if (logTextView == null) return false;
+        if (applicationIdentifier == null) return false;
+        if (applicationIdentifier.length != 3) return false;
+
+        // create an application
+        writeToUiAppend(logTextView, "create the application " + Utils.bytesToHex(applicationIdentifier));
+        byte createApplicationCommand = (byte) 0xca;
+        byte applicationMasterKeySettings = (byte) 0x0f;
+        byte[] createApplicationParameters = new byte[5];
+        System.arraycopy(applicationIdentifier, 0, createApplicationParameters, 0, applicationIdentifier.length);
+        createApplicationParameters[3] = applicationMasterKeySettings;
+        createApplicationParameters[4] = numberOfKeys;
+        writeToUiAppend(logTextView, printData("createApplicationParameters", createApplicationParameters));
+        byte[] createApplicationResponse = new byte[0];
+        try {
+            createApplicationResponse = isoDep.transceive(wrapMessage(createApplicationCommand, createApplicationParameters));
+            writeToUiAppend(logTextView, printData("createApplicationResponse", createApplicationResponse));
+            System.arraycopy(returnStatusBytes(createApplicationResponse), 0, response, 0, 2);
+            //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+            if (checkResponse(createApplicationResponse)) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "createApplicationDes tranceive failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean createApplicationAes(TextView logTextView, byte[] applicationIdentifier, byte numberOfKeys, byte[] response) {
         if (logTextView == null) return false;
         if (applicationIdentifier == null) return false;
         if (applicationIdentifier.length != 3) return false;
