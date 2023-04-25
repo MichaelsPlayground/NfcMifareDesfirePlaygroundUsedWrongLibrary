@@ -153,7 +153,12 @@ public class DefaultIsoDepAdapter implements IsoDepAdapter {
 
         do {
             if (response[response.length - 2] != OPERATION_OK) {
-                throw new Exception("Invalid response " + String.format("%02x", response[response.length - 2] & 0xff));
+                // todo remove this
+                System.out.println("*** Invalid response ***");
+                System.out.println(Utils.getHexString(response));
+
+                // todo remove comment
+                //throw new Exception("Invalid response " + String.format("%02x", response[response.length - 2] & 0xff));
             }
 
             output.write(response, 0, response.length - 2);
