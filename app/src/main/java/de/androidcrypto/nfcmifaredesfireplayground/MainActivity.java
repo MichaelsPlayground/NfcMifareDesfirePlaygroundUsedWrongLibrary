@@ -910,7 +910,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 for (int i = 0; i < 5; i++) {
                     recordNumber[0] = (byte) (i & 0xFF);
                     byte[] readFileData = readFromCyclicFile(readResult, DesLogCyclicFileFileNumber, recordNumber, numberOfRecords, responseData, true);
-                    //writeToUiAppend(readResult, printData("readFileData", readFileData));
+                    writeToUiAppend(readResult, printData("readFileData", readFileData));
                     writeToUiAppend(readResult, "record " + i + " : " + new String(readFileData, StandardCharsets.UTF_8));
                     byte[] readFileStatus = returnStatusBytes(readFileData);
                     boolean readData = false;
@@ -1196,6 +1196,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     byte[] tkdesKey = new byte[24];
                     byte aesKeyNumber = (byte) 0x00;
                     byte numberOfKeys = (byte) 0x03; // 3 AES keys
+                    byte fileNumber = (byte) 0x01;
                     //boolean createApplication = desfire.createApplication(aid, applicationMasterKeySettings, DESFireEV1.DesfireKeyType.AES, numberOfKeys);
                     //boolean createApplication = desfire.createApplication(aid, applicationMasterKeySettings, DESFireEV1.DesfireKeyType.TKTDES, numberOfKeys);
                     boolean createApplication = desfire.createApplication(aid, applicationMasterKeySettings, DESFireEV1.DesfireKeyType.DES, numberOfKeys);
@@ -1213,7 +1214,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "authenticateApplication: " + auth);
 
                     // create a standard file
-                    byte fileNumber = (byte) 0x01;
+
                     byte communicationSettings = (byte) 0x00; // plain communication without any encryption
                 /*
                 M0775031 DESFIRE
@@ -1294,12 +1295,23 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                      * 					<br>length of the data to be written (3 bytes LSB),
                      * 					<br>the data (1+ bytes)
                      */
-
+/*
                     writeToUiAppend(readResult, printData("payloadCyclicValueData", payloadWriteData));
                     boolean writeCyclicValue = desfire.writeRecord(payloadWriteData);
                     writeToUiAppend(readResult, "writeCyclicValue Success: " + writeCyclicValue);
+
+ */
                     // payloadCyclicValueData length: 12 data: 0100000005000068656c6c6f
 // my data writeFileParameters length: 37 data:                040000001e0000456e7472792066726f6d20323032332e30342e32352031363a31373a3034
+
+/*
+payloadCyclicValueFile    length: 10 data: 01000012200000040000
+*** DESFireEV1 transmit command: 90c000000a0100001220000004000000
+ */
+
+
+
+/*
 
                     // commit
                     boolean commitTransaction = desfire.commitTransaction();
@@ -1308,7 +1320,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     byte[] readData = desfire.readData(fileNumber, 0, 10);
                     writeToUiAppend(readResult, printData("readData", readData));
                     writeToUiAppend(readResult, "readData: " + new String(readData, StandardCharsets.UTF_8));
-
+*/
 /*
                     // create application AES cipher and two application keys
                     writeToUiAppend(readResult, "create application with AES authentication");
@@ -1337,6 +1349,44 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
 
  */
+
+                    // write to cyclic file with own method
+                    byte[] responseData = new byte[2];
+                    boolean writeCyc = writeToCyclicFile(readResult, fileNumber, responseData);
+                    writeToUiAppend(readResult, "writeCyc: " + writeCyc + " response: " + Utils.bytesToHex(responseData));
+                    boolean writeCycCommit = commitWriteToFile(readResult, responseData);
+                    writeToUiAppend(readResult, "writeCycCommit: " + writeCycCommit + " response: " + Utils.bytesToHex(responseData));
+
+                    // now desfire method to read
+                    byte[] dataRead = desfire.readData(fileNumber, 0, 32);
+                    writeToUiAppend(readResult, printData("dataRead", dataRead));
+                    if (dataRead != null) {
+                        writeToUiAppend(readResult, new String(dataRead, StandardCharsets.UTF_8));
+                    }
+                    // *** read comm: 90 bd 0000 07 01 00000000002000
+                    // my manua comm: 90 bb 0000 07 04 04000001000000
+
+                    // now desfire method to read second try
+                    byte[] dataRead2 = desfire.readRecords(fileNumber, 0, 32);
+                    writeToUiAppend(readResult, printData("dataRead2", dataRead2));
+                    if (dataRead2 != null) {
+                        writeToUiAppend(readResult, new String(dataRead2, StandardCharsets.UTF_8));
+                    }
+                    // read comm:     90 bb 0000 07 01 00000000002000
+                    // my manua comm: 90 bb 0000 07 04 04000001000000
+
+
+                    /// my method
+                    // define some data
+                    byte[] recordNumber = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // record 0 is the youngest record
+                    byte[] numberOfRecordsMy = new byte[]{(byte) 0x01, (byte) 0x00, (byte) 0x00}; // read just one record
+                    byte[] readDataMy = readFromCyclicFile(readResult, fileNumber, recordNumber, numberOfRecordsMy, responseData, true);
+                    writeToUiAppend(readResult, printData("readDataMy", readDataMy));
+
+                    byte[] numberOfRecordsMy2 = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x20}; // read all records // BE = Boundary error
+                    byte[] readDataMy2 = readFromCyclicFile(readResult, fileNumber, recordNumber, numberOfRecordsMy2, responseData, true);
+                    writeToUiAppend(readResult, printData("readDataMy2", readDataMy2));
+
 
                 } catch (IOException e) {
                     //throw new RuntimeException(e);
@@ -2251,6 +2301,14 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             //Record number (3 bytes)
             //Number of records (3 bytes)
             //byte[] readFileParameters = new byte[7];
+
+            // compare desfire vs this
+            //                              | file number
+            //                                 | record number
+            //                                        | number of records
+            // read comm:     90 bb 0000 07 01 000000 000020 00
+            // my manua comm: 90 bb 0000 07 04 040000 010000 00
+
             readFileParameters[0] = fileNumber;
             System.arraycopy(recordNumber, 0, readFileParameters, 1, 3);
             System.arraycopy(numberOfRecords, 0, readFileParameters, 4, 3);
@@ -2262,11 +2320,16 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         }
         byte[] readFileResponse = new byte[0];
         try {
+            // todo remove line
+            writeToUiAppend(logTextView, printData("read Cycl comm", wrapMessage(readFileCommand, readFileParameters)));
+
             readFileResponse = isoDep.transceive(wrapMessage(readFileCommand, readFileParameters));
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
         }
+        // todo copy readFileResponse to response
+
         return readFileResponse;
     }
 

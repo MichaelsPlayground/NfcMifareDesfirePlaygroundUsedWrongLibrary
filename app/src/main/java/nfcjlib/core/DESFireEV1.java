@@ -1551,6 +1551,19 @@ public class DESFireEV1 {
 			Log.e(TAG, "postprocess: commSett is null");
 			return null;
 		}
+		// todo remove lines
+		System.out.println("*** postProcess apdu: " + Utils.getHexString(apdu));
+		if (apdu == null) {
+			Log.e(TAG, "postprocess: apdu is NULL");
+			reset();
+			return null;
+		}
+		if (apdu.length == 0) {
+			Log.e(TAG, "postprocess: apdu is of length 0");
+			reset();
+			return null;
+		}
+		// old code
 		if (apdu[apdu.length - 1] != 0x00) {
 			Log.e(TAG, "postprocess: status <> 00 (" + Response.getResponse(apdu[apdu.length - 1]) + ")");
 			reset();
@@ -1899,9 +1912,15 @@ public class DESFireEV1 {
 		System.arraycopy(payload, 0, apdu, 5, 7);
 		apdu[12] = 0x00;
 
+		// todo remove line
+		System.out.println("*** read comm: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(apdu));
+
 		preprocess(apdu, DesfireFileCommunicationSettings.PLAIN);
 		
 		byte[] responseAPDU = adapter.sendAdpuChain(apdu);
+		// todo remove line
+		System.out.println("*** read resp: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(responseAPDU));
+
 		feedback(apdu, responseAPDU);
 
 		return postprocess(baos.toByteArray(), responseLength, cs);
@@ -2056,7 +2075,8 @@ public class DESFireEV1 {
 
 	// feedback/debug: a request-response round
 	private void feedback(byte[] command, byte[] response) {
-		
+		// todo remove
+		print = true;
 		if(print) {
 			Log.d(TAG, "---> " + getHexString(command, true) + " (" + command.length + ")");
 		}
@@ -2562,7 +2582,7 @@ public class DESFireEV1 {
 
 	private byte[] transmit(byte[] command) throws IOException {
 		// todo remove
-		// System.out.println("*** DESFireEV1 transmit command: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(command) + " adapter: " + adapter.toString());
+		System.out.println("*** DESFireEV1 transmit command: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(command) + " adapter: " + adapter.toString());
 		return adapter.transceive(command);
 	}
 
