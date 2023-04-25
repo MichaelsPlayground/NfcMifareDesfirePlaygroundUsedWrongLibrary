@@ -20,6 +20,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.github.skjolber.desfire.ev1.model.DesfireApplicationKeySettings;
 import com.github.skjolber.desfire.ev1.model.DesfireTag;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepAdapter;
 import com.github.skjolber.desfire.ev1.model.command.DefaultIsoDepWrapper;
@@ -42,7 +43,7 @@ import nfcjlib.core.DESFireEV1;
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17, btn18, btn19;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte;
@@ -148,6 +149,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn15 = findViewById(R.id.btn15);
         btn16 = findViewById(R.id.btn16);
         btn17 = findViewById(R.id.btn17);
+        btn18 = findViewById(R.id.btn18);
+        btn19 = findViewById(R.id.btn19);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -1148,6 +1151,94 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // memory usage measures
             }
         });
+
+        btn18.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // AES playground
+
+                DESFireEV1 desfire = new DESFireEV1();
+                try {
+
+                    // set adapter
+                    desfire.setAdapter(defaultIsoDepAdapter);
+
+                    // select PICC (is selected by default but...)
+                    boolean selectMasterApplicationSuccess = desfire.selectApplication(new byte[] {0x00, 0x00, 0x00});
+                    writeToUiAppend(readResult, "selectMasterApplicationSuccess: " + selectMasterApplicationSuccess);
+                    if (!selectMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectMasterApplication NOT Success, aborted");
+                        return;
+                    }
+                    // authenticate: assume default key with cipher AES
+                    // for KeyType see com.github.skjolber.desfire.ev1.model.key.DESFireKeyType.java
+                    // NONE(0), DES(1), TDES(2), TKTDES(3), AES(4);
+
+                    //desfire.authenticate(new byte[16], (byte) 0x00, KeyType.AES);
+                    //boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[16], (byte) 0x00, DESFireEV1.DesfireKeyType.AES);
+                    boolean authenticateMasterApplicationSuccess = desfire.authenticate(new byte[8], (byte) 0x00, DESFireEV1.DesfireKeyType.DES);
+                    writeToUiAppend(readResult, "authenticateMasterApplicationSuccess: " + authenticateMasterApplicationSuccess);
+                    if (!authenticateMasterApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateMasterApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // getKeySettings
+                    DesfireApplicationKeySettings keySettingsOrgDes = desfire.getKeySettings();
+                    writeToUiAppend(readResult, "keySettings (Org/DES): " + keySettingsOrgDes.toString());
+
+
+
+/*
+                    // create application AES cipher and two application keys
+                    writeToUiAppend(readResult, "create application with AES authentication");
+                    byte[] APPLICATION_ID = new byte[] {0x09, 0x05, 0x07};
+                    boolean createApplicationSuccess = desfire.createApplication(APPLICATION_ID, (byte) 0x0F, DESFireEV1.DesfireKeyType.AES, (byte) 0x02);
+                    writeToUiAppend(readResult, "createApplicationSuccess: " + createApplicationSuccess);
+
+                    // authenticate the new application
+                    // authenticate inside application with key 0x00 and cipher 3K3DES
+                    boolean authenticateApplicationSuccess = desfire.authenticate(new byte[16], (byte) 0x00, DESFireEV1.DesfireKeyType.AES);
+                    writeToUiAppend(readResult, "authenticateApplicationSuccess: " + authenticateApplicationSuccess);
+                    if (!authenticateApplicationSuccess) {
+                        writeToUiAppend(readResult,"authenticateApplication NOT Success, aborted");
+                        return;
+                    }
+
+                    // select application
+                    boolean selectApplicationSuccess = desfire.selectApplication(APPLICATION_ID);
+                    writeToUiAppend(readResult, "selectApplicationSuccess: " + selectApplicationSuccess);
+                    if (!selectApplicationSuccess) {
+                        writeToUiAppend(readResult,"selectApplication NOT Success, aborted");
+                        return;
+                    }
+
+
+                    writeToUiAppend(readResult, "creation of a TKDES encrypted application done");
+
+ */
+
+                } catch (IOException e) {
+                    //throw new RuntimeException(e);
+                    writeToUiAppend(readResult, "IOException: " + e.getMessage());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+
+            }
+        });
+
+        btn19.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // prepare card for AES
+
+                writeToUiAppend(readResult,"");
+                writeToUiAppend(readResult, "prepairing the card for AES usage (format, change masterKey to aes");
+            }
+        });
+
 
         // todo change key values
         // todo change numberOfKeys to '05 + 1'
