@@ -28,6 +28,14 @@ https://github.com/andrade/nfcjlib
 
 https://hack.cert.pl/files/desfire-9f122c71e0057d4f747d2ee295b0f5f6eef8ac32.html
 
+ProximityCheck see MIFARE Plus EV2 page 25:
+```plaintext
+Proximity check commands
+PreparePC F0h prepare for the Proximity Check
+ProximityCheck F2h perform the precise measurement for the
+proximity check
+VerifyPC FDh verify the proximity check
+```
 
 This app is verifying the ("originality") signature of a Mifare Desfire EV2 tag.
 

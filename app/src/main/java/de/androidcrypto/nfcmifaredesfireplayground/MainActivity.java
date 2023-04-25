@@ -104,8 +104,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private final byte[] AID_DesValue_Key2 =     Utils.hexStringToByteArray("0000000000000000");
     private final byte[] AID_DesValue_Key2_new =     Utils.hexStringToByteArray("2222119988776602");
     private final byte AID_DesValue_Key2_Number = (byte) 0x02;
-    private final byte DesValueFileFileNumber1 = (byte) 0x01;
-    private final byte DesValueFileFileNumber2 = (byte) 0x02;
+    private final byte DesValueFileFileNumber1 = (byte) 0x02;
+    private final byte DesValueFileFileNumber2 = (byte) 0x03;
 
     /**
      * constants for application "DesLog", 3 DES keys, 1 Cycle File with 5 (+1 spare) records with each 32 bytes
@@ -121,7 +121,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
     private final byte[] AID_DesLog_Key2_New = Utils.hexStringToByteArray("3322119988776602"); // new key, lets work on this
     //private final byte[] AID_DesLog_Key2_New2 = Utils.hexStringToByteArray("3322119988776612"); // new key, lets work on this
     private final byte AID_DesLog_Key2_Number = (byte) 0x02;
-    private final byte DesLogCyclicFileFileNumber = (byte) 0x03;
+    private final byte DesLogCyclicFileFileNumber = (byte) 0x04;
     private final byte DesLogCyclicFileNumberOfRecords = (byte) 0x06; // 5 records (+1 record as spare record for writing data before committing), fixed for this method
 
     @Override
@@ -231,7 +231,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate
                 responseData = new byte[2];
                 // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key0_Number, AID_DesStandard_Key0, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key0_Number, AID_DesStandard_Key0, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication result: " + authenticateSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -291,7 +291,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate
                 responseData = new byte[2];
                 // we set the rw + car rights to key 0 and read rights to key1, so we need to authenticate with key 1 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key1_Number, AID_DesStandard_Key1, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key1_Number, AID_DesStandard_Key1, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication result: " + authenticateSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -336,7 +336,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate
                 responseData = new byte[2];
                 // we set the rw + car rights to key 0 and read rights to key1, so we need to authenticate with key 2 (write rights) first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key2_Number, AID_DesStandard_Key2, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesStandard_Key2_Number, AID_DesStandard_Key2, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication result: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -373,7 +373,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate
                 responseData = new byte[2];
                 // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
-                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, AID_Master_Key0_Number, AID_Master_Key0, responseData);
+                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, AID_Master_Key0_Number, AID_Master_Key0, false, responseData);
                 writeToUiAppend(readResult, "authenticateMasterApplication result: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateMasterSuccess) {
                     writeToUiAppend(readResult, "the authenticationMaster was not successful, aborted");
@@ -394,7 +394,12 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 responseData = new byte[2];
                 boolean selectApplicationSuccess = selectApplicationDes(readResult, AID_DesValue, responseData);
                 writeToUiAppend(readResult, "selectApplication result: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
+                }
 
+/*
                 // authenticate
                 responseData = new byte[2];
                 // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
@@ -404,7 +409,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
                     return;
                 }
-
+*/
                 // create the value file
                 responseData = new byte[2];
                 boolean createValueFileSuccess = createValueFile(readResult, DesValueFileFileNumber1, responseData);
@@ -421,141 +426,162 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             public void onClick(View view) {
                 // increase value file
 
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "increase a Value File");
+
                 // select application
-                byte selectApplicationCommand = (byte) 0x5a;
-                byte[] applicationIdentifier = new byte[]{(byte) 0xa1, (byte) 0xa2, (byte) 0xa3}; // AID is A3A2A1
-                byte[] selectApplicationResponse = new byte[0];
-                try {
-                    selectApplicationResponse = isoDep.transceive(wrapMessage(selectApplicationCommand, applicationIdentifier));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("selectApplicationResponse", selectApplicationResponse));
-
-                // first read the existing value
-                // check access rights, here not necessary because of free access
-
-                byte readValueFileCommand = (byte) 0x6c;
-                byte fileNumber = (byte) 0x08;
-                byte[] readValueFileResponse = new byte[0];
-                /*
-                // DESFireEv1:
-                byte[] apdu = new byte[7];
-                apdu[0] = (byte) 0x90;
-                apdu[1] = readValueFileCommand;
-                apdu[2] = 0x00;
-                apdu[3] = 0x00;
-                apdu[4] = 0x01;
-                apdu[5] = fileNumber;
-                apdu[6] = 0x00;
-                */
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
-
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
+                // select the application
+                byte[] responseData = new byte[2];
+                boolean selectApplicationSuccess = selectApplicationDes(readResult, AID_DesValue, responseData);
+                writeToUiAppend(readResult, "selectApplication result: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
                 }
 
-                // now increase data
-                byte creditValueCommand = (byte) 0x0c;
-                int increaseValueBy3 = 3;
-                // convert credit amount to a 4 byte reversed array
-                byte[] creditValueAmountByte = intToLsb(increaseValueBy3);
-                byte[] creditValueFileParameters = new byte[5];
-                creditValueFileParameters[0] = fileNumber;
-                System.arraycopy(creditValueAmountByte, 0, creditValueFileParameters, 1, 4);
-                writeToUiAppend(readResult, printData("creditValueFileParameters", creditValueFileParameters));
-                byte[] creditValueFileResponse = new byte[0];
-                try {
-                    creditValueFileResponse = isoDep.transceive(wrapMessage(creditValueCommand, creditValueFileParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("creditValueFileResponse", creditValueFileResponse));
-
-                // don't forget to commit all changes
-                byte commitCommand = (byte) 0xc7;
-                byte[] commitResponse = new byte[0];
-                try {
-                    commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("commitResponse", commitResponse));
-
-                // now read again
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
-                }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
-
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
+                // as we set key 1 as read right we need to authenticate with key 1
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 1 first to proceed reading
+                boolean authenticateReadSuccess = authenticateApplicationDes(readResult, AID_DesValue_Key1_Number, AID_DesValue_Key1, false, responseData);
+                writeToUiAppend(readResult, "authenticateRead result: " + authenticateReadSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateReadSuccess) {
+                    writeToUiAppend(readResult, "the authenticationRead was not successful, aborted");
+                    return;
                 }
 
-                // decrease value by 1
-                byte debitValueCommand = (byte) 0xdc;
-                int decreaseValueBy1 = 1;
-                // convert credit amount to a 4 byte reversed array
-                byte[] debitValueAmountByte = intToLsb(decreaseValueBy1);
-                byte[] debitValueFileParameters = new byte[5];
-                debitValueFileParameters[0] = fileNumber;
-                System.arraycopy(debitValueAmountByte, 0, debitValueFileParameters, 1, 4);
-                writeToUiAppend(readResult, printData("debitValueFileParameters", debitValueFileParameters));
-                byte[] debitValueFileResponse = new byte[0];
-                try {
-                    debitValueFileResponse = isoDep.transceive(wrapMessage(debitValueCommand, debitValueFileParameters));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                // read the existing value
+                int actualValue = readFromValueFile(readResult, DesValueFileFileNumber1, responseData);
+                // check response if read was success
+                //writeToUiAppend(readResult, printData("responseData", responseData));
+                if (checkResponse(responseData)) {
+                    writeToUiAppend(readResult, "The value read from value file is: " + actualValue);
+                } else {
+                    writeToUiAppend(readResult, "there was an error during reading the value, aborted");
+                    return;
                 }
-                writeToUiAppend(readResult, printData("debitValueFileResponse", debitValueFileResponse));
 
-                // don't forget to commit all changes
-                //byte commitCommand = (byte) 0xc7;
-                //byte[] commitResponse = new byte[0];
-                try {
-                    commitResponse = isoDep.transceive(wrapMessage(commitCommand, null));
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                // The Credit command requires a preceding authentication with the key specified for 'Read&Write' access
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed writing
+                boolean authenticateWriteSuccess = authenticateApplicationDes(readResult, AID_DesValue_Key0_Number, AID_DesValue_Key0, false, responseData);
+                writeToUiAppend(readResult, "authenticateWrite result: " + authenticateWriteSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateWriteSuccess) {
+                    writeToUiAppend(readResult, "the authenticationWrite was not successful, aborted");
+                    return;
                 }
-                writeToUiAppend(readResult, printData("commitResponse", commitResponse));
 
-                // now read again
-                try {
-                    readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
-                    //readValueFileResponse = isoDep.transceive(apdu);
-                } catch (Exception e) {
-                    //throw new RuntimeException(e);
-                    writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+                // increase = credit value file
+                responseData = new byte[2];
+                int increaseValue = 7;
+                boolean increaseSuccess = increaseValueFile(readResult, DesValueFileFileNumber1, increaseValue, responseData);
+                writeToUiAppend(readResult, "increase result: " + increaseSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!increaseSuccess) {
+                    writeToUiAppend(readResult, "the increase was not successful, aborted");
+                    // check for boundery error
+                    if (checkResponseBoundaryError(responseData)) {
+                        writeToUiAppend(readResult, "Boundary error: the increased value is higher then the upper limit");
+                    }
+                    return;
+                } else {
+                    writeToUiAppend(readResult, "The value file was increased by " + increaseValue + ". Run commit !");
                 }
-                writeToUiAppend(readResult, printData("readValueFileResponse", readValueFileResponse));
-                // readValueFileResponse length: 6 data: 320000009100
 
-                if (readValueFileResponse.length > 2) {
-                    byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
-                    int value = byteArrayLength4InversedToInt(valueBytes);
-                    writeToUiAppend(readResult, "Actual value: " + value);
+                // don't forget to submit
+                responseData = new byte[2];
+                boolean commitSuccess = commitWriteToFile(readResult, responseData);
+                writeToUiAppend(readResult, "commit result: " + commitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!commitSuccess) {
+                    writeToUiAppend(readResult, "the commit was not successful, aborted");
+                    return;
+                } else {
+                    writeToUiAppend(readResult, "The value file was increased by " + increaseValue);
+                }
+
+                // as we set key 1 as read right we need to authenticate with key 1
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 1 first to proceed reading
+                boolean authenticateRead2Success = authenticateApplicationDes(readResult, AID_DesValue_Key1_Number, AID_DesValue_Key1, false, responseData);
+                writeToUiAppend(readResult, "authenticateRead2 result: " + authenticateRead2Success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateRead2Success) {
+                    writeToUiAppend(readResult, "the authenticationRead2 was not successful, aborted");
+                    return;
+                }
+
+                // read the increased value
+                int actualValue2 = readFromValueFile(readResult, DesValueFileFileNumber1, responseData);
+                // check response if read was success
+                //writeToUiAppend(readResult, printData("responseData", responseData));
+                if (checkResponse(responseData)) {
+                    writeToUiAppend(readResult, "The value read from value file is: " + actualValue2);
+                } else {
+                    writeToUiAppend(readResult, "there was an error during reading the value 2, aborted");
+                    return;
+                }
+
+                // to decrease a value we do not need the R&W access:
+                // The Debit command requires a preceding authentication with one of the keys specified for Read, Write or Read&Write access
+
+                // I'm using key 2 now just for testing the write key
+                // as we set key 2 as write right we need to authenticate with key 2
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 1 first to proceed reading
+                boolean authenticateWrite2Success = authenticateApplicationDes(readResult, AID_DesValue_Key2_Number, AID_DesValue_Key2, false, responseData);
+                writeToUiAppend(readResult, "authenticateWrite2 result: " + authenticateWrite2Success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateWrite2Success) {
+                    writeToUiAppend(readResult, "the authenticationWrite2 was not successful, aborted");
+                    return;
+                }
+
+                // now decrease the value
+                responseData = new byte[2];
+                int decreaseValue = 17;
+                boolean decreaseSuccess = decreaseValueFile(readResult, DesValueFileFileNumber1, decreaseValue, responseData);
+                writeToUiAppend(readResult, "decrease result: " + decreaseSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!decreaseSuccess) {
+                    writeToUiAppend(readResult, "the decrease was not successful, aborted");
+                    if (checkResponseBoundaryError(responseData)) {
+                        writeToUiAppend(readResult, "Boundary error: the decreased value is lower then the lower limit");
+                    }
+                    return;
+                } else {
+                    writeToUiAppend(readResult, "The value file was decreased by " + decreaseValue + ". Run commit !");
+                }
+
+                // don't forget to submit
+                responseData = new byte[2];
+                commitSuccess = commitWriteToFile(readResult, responseData);
+                writeToUiAppend(readResult, "commit result: " + commitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!commitSuccess) {
+                    writeToUiAppend(readResult, "the commit was not successful, aborted");
+                    return;
+                } else {
+                    writeToUiAppend(readResult, "The value file was decreased by " + decreaseValue);
+                }
+
+                // as we set key 1 as read right we need to authenticate with key 1
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 1 first to proceed reading
+                boolean authenticateRead3Success = authenticateApplicationDes(readResult, AID_DesValue_Key1_Number, AID_DesValue_Key1, false, responseData);
+                writeToUiAppend(readResult, "authenticateRead3 result: " + authenticateRead3Success + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateRead3Success) {
+                    writeToUiAppend(readResult, "the authenticationRead3 was not successful, aborted");
+                    return;
+                }
+
+                // read the decreased value
+                int actualValue3 = readFromValueFile(readResult, DesValueFileFileNumber1, responseData);
+                // check response if read was success
+                //writeToUiAppend(readResult, printData("responseData", responseData));
+                if (checkResponse(responseData)) {
+                    writeToUiAppend(readResult, "The value read from value file is: " + actualValue3);
+                } else {
+                    writeToUiAppend(readResult, "there was an error during reading the value 3, aborted");
+                    return;
                 }
             }
         });
@@ -786,7 +812,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate own
                 responseData = new byte[2]; // todo work on this
                 // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
-                success = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, responseData);
+                success = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!success) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -845,7 +871,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate
                 responseData = new byte[2]; // todo work on this
                 // we set the read + write key to key 1 so we need to authenticate with key 1 first to proceed
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, (byte) 0x01, AID_DesLog_Key1, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -864,7 +890,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     }
                     // commit
                     responseData = new byte[2];
-                    boolean writeToFileCommitSuccess = writeToFileCommit(readResult, responseData);
+                    boolean writeToFileCommitSuccess = commitWriteToFile(readResult, responseData);
                     writeToUiAppend(readResult, "writeToFileCommit success: " + success + " with response: " + Utils.bytesToHex(responseData));
                     if (!writeToFileCommitSuccess) {
                         writeToUiAppend(readResult, "writeToFileCommit was not successful, aborted");
@@ -1015,7 +1041,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 // authenticate with key 1
                 responseData = new byte[2];
                 // note: the access key settings for this application is 0x0F see M075031_desfire.pdf pages 33, 34 + 35
-                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesLog_Key1_Number, AID_DesLog_Key1, responseData);
+                boolean authenticateSuccess = authenticateApplicationDes(readResult, AID_DesLog_Key1_Number, AID_DesLog_Key1, false, responseData);
                 writeToUiAppend(readResult, "authenticateApplication success: " + success + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateSuccess) {
                     writeToUiAppend(readResult, "the authentication was not successful, aborted");
@@ -1033,7 +1059,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // don't forget to commit
                 responseData = new byte[2];
-                boolean commitSuccess = writeToFileCommit(readResult, responseData);
+                boolean commitSuccess = commitWriteToFile(readResult, responseData);
                 writeToUiAppend(readResult, "commit success: " + commitSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!commitSuccess) {
                     writeToUiAppend(readResult, "commit was not successful, aborted");
@@ -1061,7 +1087,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
                 // authenticate
                 responseData = new byte[2];
-                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, (byte) 0x00, AID_Master_Key0, responseData);
+                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, (byte) 0x00, AID_Master_Key0, false, responseData);
                 writeToUiAppend(readResult, "authenticateMasterApplication success: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
                 if (!authenticateMasterSuccess) {
                     writeToUiAppend(readResult, "the authenticationMasterApplication was not successful, aborted");
@@ -1137,7 +1163,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
      * section for authentication with DES
      */
 
-    private boolean authenticateApplicationDes(TextView logTextView, byte keyId, byte[] key, byte[] response) {
+    // if verbose = true all steps are printed out
+    private boolean authenticateApplicationDes(TextView logTextView, byte keyId, byte[] key, boolean verbose, byte[] response) {
         try {
             writeToUiAppend(logTextView, "authenticateApplicationDes for keyId " + keyId + " and key " + Utils.bytesToHex(key));
             // do DES auth
@@ -1147,17 +1174,17 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             //byte[] getChallengeResponse = nfcA.transceive(Utils.hexStringToByteArray(getChallengeCommand));
             //byte[] getChallengeResponse = nfcA.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x01} ));
             byte[] getChallengeResponse = isoDep.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) (keyId & 0xFF)}));
-            writeToUiAppend(logTextView,  printData("getChallengeResponse", getChallengeResponse));
+            if (verbose) writeToUiAppend(logTextView,  printData("getChallengeResponse", getChallengeResponse));
             // cf5e0ee09862d90391af
             // 91 af at the end shows there is more data
 
             byte[] challenge = Arrays.copyOf(getChallengeResponse, getChallengeResponse.length - 2);
-            writeToUiAppend(logTextView, printData("challengeResponse", challenge));
+            if (verbose) writeToUiAppend(logTextView, printData("challengeResponse", challenge));
 
             // Of course the rndA shall be a random number,
             // but we will use a constant number to make the example easier.
             byte[] rndA = Utils.hexStringToByteArray("0001020304050607");
-            writeToUiAppend(logTextView, printData("rndA", rndA));
+            if (verbose) writeToUiAppend(logTextView, printData("rndA", rndA));
 
             // This is the default key for a blank DESFire card.
             // defaultKey = 8 byte array = [0x00, ..., 0x00]
@@ -1167,18 +1194,18 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
 
             // Decrypt the challenge with default keybyte[] rndB = decrypt(challenge, defaultDESKey, IV);
             byte[] rndB = decrypt(challenge, defaultDESKey, IV);
-            writeToUiAppend(logTextView, printData("rndB", rndB));
+            if (verbose) writeToUiAppend(logTextView, printData("rndB", rndB));
             // Rotate left the rndB byte[] leftRotatedRndB = rotateLeft(rndB);
             byte[] leftRotatedRndB = rotateLeft(rndB);
-            writeToUiAppend(logTextView, printData("leftRotatedRndB", leftRotatedRndB));
+            if (verbose) writeToUiAppend(logTextView, printData("leftRotatedRndB", leftRotatedRndB));
             // Concatenate the RndA and rotated RndB byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
             byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
-            writeToUiAppend(logTextView, printData("rndA_rndB", rndA_rndB));
+            if (verbose) writeToUiAppend(logTextView, printData("rndA_rndB", rndA_rndB));
 
             // Encrypt the bytes of the last step to get the challenge answer byte[] challengeAnswer = encrypt(rndA_rndB, defaultDESKey, IV);
             IV = challenge;
             byte[] challengeAnswer = encrypt(rndA_rndB, defaultDESKey, IV);
-            writeToUiAppend(logTextView, printData("challengeAnswer", challengeAnswer));
+            if (verbose) writeToUiAppend(logTextView, printData("challengeAnswer", challengeAnswer));
 
             IV = Arrays.copyOfRange(challengeAnswer, 8, 16);
                 /*
@@ -1194,7 +1221,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             challengeAnswerAPDU[4] = (byte) 0x10; // data length: 16 bytes
             challengeAnswerAPDU[challengeAnswerAPDU.length - 1] = (byte) 0x00;
             System.arraycopy(challengeAnswer, 0, challengeAnswerAPDU, 5, challengeAnswer.length);
-            writeToUiAppend(logTextView, printData("challengeAnswerAPDU", challengeAnswerAPDU));
+            if (verbose) writeToUiAppend(logTextView, printData("challengeAnswerAPDU", challengeAnswerAPDU));
 
             /*
              * Sending the APDU containing the challenge answer.
@@ -1202,9 +1229,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
              */
             byte[] challengeAnswerResponse = isoDep.transceive(challengeAnswerAPDU);
             // response = channel.transmit(new CommandAPDU(challengeAnswerAPDU));
-            writeToUiAppend(logTextView, printData("challengeAnswerResponse", challengeAnswerResponse));
+            if (verbose) writeToUiAppend(logTextView, printData("challengeAnswerResponse", challengeAnswerResponse));
             byte[] challengeAnswerResp = Arrays.copyOf(challengeAnswerResponse, getChallengeResponse.length - 2);
-            writeToUiAppend(logTextView, printData("challengeAnswerResp", challengeAnswerResp));
+            if (verbose) writeToUiAppend(logTextView, printData("challengeAnswerResp", challengeAnswerResp));
 
             /*
              * At this point, the challenge was processed by the card. The card decrypted the
@@ -1215,11 +1242,11 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             // Decrypt the rnd received from the Card.byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
             //byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
             byte[] rotatedRndAFromCard = decrypt(challengeAnswerResp, defaultDESKey, IV);
-            writeToUiAppend(logTextView, printData("rotatedRndAFromCard", rotatedRndAFromCard));
+            if (verbose) writeToUiAppend(logTextView, printData("rotatedRndAFromCard", rotatedRndAFromCard));
 
             // As the card rotated left the rndA,// we shall un-rotate the bytes in order to get compare it to our original rndA.byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
             byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
-            writeToUiAppend(logTextView, printData("rndAFromCard", rndAFromCard));
+            if (verbose) writeToUiAppend(logTextView, printData("rndAFromCard", rndAFromCard));
             writeToUiAppend(logTextView, "********** AUTH RESULT **********");
             //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
             if (Arrays.equals(rndA, rndAFromCard)) {
@@ -1603,11 +1630,99 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         }
     }
 
-    private byte[] readFromValueFile(TextView logTextView, byte fileNumber, byte[] response) {
+    private int readFromValueFile(TextView logTextView, byte fileNumber, byte[] response) {
         // we read from a standard file within the selected application
-
-        return null;
+        byte readValueFileCommand = (byte) 0x6c;
+        byte[] readValueFileResponse = new byte[0];
+                /*
+                // DESFireEv1:
+                byte[] apdu = new byte[7];
+                apdu[0] = (byte) 0x90;
+                apdu[1] = readValueFileCommand;
+                apdu[2] = 0x00;
+                apdu[3] = 0x00;
+                apdu[4] = 0x01;
+                apdu[5] = fileNumber;
+                apdu[6] = 0x00;
+                */
+        try {
+            readValueFileResponse = isoDep.transceive(wrapMessage(readValueFileCommand, new byte[]{fileNumber}));
+            //readValueFileResponse = isoDep.transceive(apdu);
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return 0;
+        }
+        writeToUiAppend(logTextView, printData("readValueFileResponse", readValueFileResponse));
+        // readValueFileResponse length: 6 data: 320000009100
+        if (readValueFileResponse.length > 2) {
+            System.arraycopy(returnStatusBytes(readValueFileResponse), 0, response, 0, 2);
+            byte[] valueBytes = Arrays.copyOf(readValueFileResponse, readValueFileResponse.length - 2);
+            int value = byteArrayLength4InversedToInt(valueBytes);
+            writeToUiAppend(logTextView, "Actual value: " + value);
+            return value;
+        }
+        return 0;
     }
+
+    // this method does not check any boundaries defined in CreateValueFile. If error code BE occurs the method returns false
+    private boolean increaseValueFile(TextView logTextView, byte fileNumber, int increaseValue, byte[] response) {
+        // sanity checks
+        if (increaseValue < 0) return false;
+        if (increaseValue > 50) return false;
+        byte creditValueCommand = (byte) 0x0c;
+        // convert credit amount to a 4 byte reversed array
+        byte[] creditValueAmountByte = intToLsb(increaseValue);
+        byte[] creditValueFileParameters = new byte[5];
+        creditValueFileParameters[0] = fileNumber;
+        System.arraycopy(creditValueAmountByte, 0, creditValueFileParameters, 1, 4);
+        writeToUiAppend(readResult, printData("creditValueFileParameters", creditValueFileParameters));
+        byte[] creditValueFileResponse = new byte[0];
+        try {
+            creditValueFileResponse = isoDep.transceive(wrapMessage(creditValueCommand, creditValueFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        writeToUiAppend(logTextView, printData("creditValueFileResponse", creditValueFileResponse));
+        System.arraycopy(returnStatusBytes(creditValueFileResponse), 0, response, 0, 2);
+        if (checkResponse(creditValueFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+     }
+
+     // decrease by a positive value
+    private boolean decreaseValueFile(TextView logTextView, byte fileNumber, int decreaseValue, byte[] response) {
+        // sanity checks
+        if (decreaseValue < 0) return false;
+        if (decreaseValue > 50) return false;
+        byte debitValueCommand = (byte) 0xdc;
+        // convert credit amount to a 4 byte reversed array
+        byte[] debitValueAmountByte = intToLsb(decreaseValue);
+        byte[] debitValueFileParameters = new byte[5];
+        debitValueFileParameters[0] = fileNumber;
+        System.arraycopy(debitValueAmountByte, 0, debitValueFileParameters, 1, 4);
+        writeToUiAppend(logTextView, printData("debitValueFileParameters", debitValueFileParameters));
+        byte[] debitValueFileResponse = new byte[0];
+        try {
+            debitValueFileResponse = isoDep.transceive(wrapMessage(debitValueCommand, debitValueFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(readResult, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        writeToUiAppend(logTextView, printData("debitValueFileResponse", debitValueFileResponse));
+        System.arraycopy(returnStatusBytes(debitValueFileResponse), 0, response, 0, 2);
+        if (checkResponse(debitValueFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     
 
 
@@ -1727,7 +1842,7 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         }
     }
 
-    private boolean writeToFileCommit(TextView logTextView, byte[] response) {
+    private boolean commitWriteToFile(TextView logTextView, byte[] response) {
         // don't forget to commit all changes
         byte commitCommand = (byte) 0xc7;
         byte[] commitResponse = new byte[0];
@@ -1878,6 +1993,27 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         } // not ok
         int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
         if (status == 0x91AF) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * checks if the response has an 0x'91BE' at the end means failure
+     * because of an Boundary Error
+     * if any other trailing bytes show up the method returns false
+     *
+     * @param data
+     * @return
+     */
+    private boolean checkResponseBoundaryError(@NonNull byte[] data) {
+        // simple sanity check
+        if (data.length < 2) {
+            return false;
+        } // not ok
+        int status = ((0xff & data[data.length - 2]) << 8) | (0xff & data[data.length - 1]);
+        if (status == 0x91BE) {
             return true;
         } else {
             return false;
