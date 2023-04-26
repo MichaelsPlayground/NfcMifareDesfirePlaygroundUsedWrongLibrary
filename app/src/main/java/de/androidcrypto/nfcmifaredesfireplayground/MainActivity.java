@@ -2008,6 +2008,18 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     //return;
                 }
 
+                // encryption code (preprocessing)
+                // preprocessing see line 1514: private byte[] preprocessEnciphered(byte[] apdu, int offset) {
+                // for encryption of send apdu see line 1767: private static byte[] encryptApdu(byte[] apdu, int offset, byte[] sessionKey, byte[] iv, DesfireKeyType type) {
+                // for encryption of sendApdu see line 48 in AES class:public static byte[] encrypt(byte[] myIV, byte[] myKey, byte[] myMsg) {
+                // for crc see line 1744: private static byte[] calculateApduCRC32C(byte[] apdu) {
+
+                // decryption code (postprocessing)
+                // postprocessing see line 1633: private byte[] postprocessEnciphered(byte[] apdu, int length) {
+                // for decryption of receivedApdu see line 2097 in AES class: public static byte[] decrypt(byte[] myIV, byte[] myKey, byte[] myMsg) {
+                // for CRC see line 1758: private static byte[] calculateApduCRC32R(byte[] apdu, int length) {
+
+
                 // write to the cyclic file
                 responseData = new byte[2];
                 boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, aesFileNumberCycle, responseData);
