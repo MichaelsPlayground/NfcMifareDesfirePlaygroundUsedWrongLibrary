@@ -2,6 +2,9 @@ package de.androidcrypto.nfcmifaredesfireplayground;
 
 import static com.github.skjolber.desfire.libfreefare.MifareDesfire.mifare_desfire_tag_new;
 
+
+import static nfcjlib.core.DESFireEV1.validateKey;
+
 import android.content.Context;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
@@ -39,11 +42,13 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import nfcjlib.core.DESFireEV1;
+import nfcjlib.core.util.AES;
+import nfcjlib.core.util.TripleDES;
 
 
 public class MainActivity extends AppCompatActivity implements NfcAdapter.ReaderCallback {
 
-    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17, btn18, btn19;
+    Button btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16, btn17, btn18, btn19, btn20, btn21;
     EditText tagId, dataToWrite, readResult;
     private NfcAdapter mNfcAdapter;
     byte[] tagIdByte;
@@ -151,6 +156,8 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
         btn17 = findViewById(R.id.btn17);
         btn18 = findViewById(R.id.btn18);
         btn19 = findViewById(R.id.btn19);
+        btn20 = findViewById(R.id.btn20);
+        btn21 = findViewById(R.id.btn21);
         mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
 
         btn2.setOnClickListener(new View.OnClickListener() {
@@ -1722,16 +1729,666 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
             }
         });
 
+        btn20.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // auth with AES keys
 
-        // todo change key values
-        // todo change numberOfKeys to '05 + 1'
-        //
+                byte[] desAid = Utils.hexStringToByteArray("d3d2d1");
+                byte[] desKey = new byte[8];
+                byte desKeyNumberRW = 0;
+                byte desKeyNumberR = 1;
+                byte desKeyNumberW = 2;
+                byte desNumberOfKeys = (byte) 0x03; // 3 DES keys
+                byte desFileNumberCycle = (byte) 0x02;
+                byte[] dataToWrite = "some data".getBytes(StandardCharsets.UTF_8);
+
+                // first we setup a des-key secured application
+                byte[] responseData = new byte[2];
+
+                // select the master file application
+                responseData = new byte[2];
+                boolean selectMasterApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectMasterApplication result: " + selectMasterApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, AID_Master_Key0_Number, AID_Master_Key0, false, responseData);
+                writeToUiAppend(readResult, "authenticateMasterApplication result: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateMasterSuccess) {
+                    writeToUiAppend(readResult, "the authenticationMaster was not successful, aborted");
+                    return;
+                }
+
+                // create the new application
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean createApplicationSuccess = createApplicationDes(readResult, desAid, desNumberOfKeys, responseData);
+                writeToUiAppend(readResult, "createApplication result: " + createApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createApplicationSuccess) {
+                    writeToUiAppend(readResult, "the createApplication was not successful, aborted");
+                    //return;
+                }
+
+                // select the application
+                responseData = new byte[2];
+                boolean selectApplicationSuccess = selectApplicationDes(readResult, desAid, responseData);
+                writeToUiAppend(readResult, "selectApplication result: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
+                }
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean authenticateDesApplicationSuccess = authenticateApplicationDes(readResult, desKeyNumberRW, desKey, false, responseData);
+                writeToUiAppend(readResult, "authenticateDesApplication result: " + authenticateDesApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateDesApplicationSuccess) {
+                    writeToUiAppend(readResult, "the authenticateDesApplication was not successful, aborted");
+                    return;
+                }
+
+                // create the cyclic file
+                responseData = new byte[2];
+                boolean createCyclicFileSuccess = createCyclicFile(readResult, desFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "createCyclicFile success: " + createCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "createCyclicFile was not successful, aborted");
+                    //return;
+                }
+
+                // write to the cyclic file
+                responseData = new byte[2];
+                boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, desFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "writeToCyclicFile success: " + writeToCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "writeToCyclicFile was not successful, aborted");
+                    //return;
+                }
+                // commit in cyclic file
+                responseData = new byte[2];
+                boolean writeToFileCommitSuccess = commitWriteToFile(readResult, responseData);
+                writeToUiAppend(readResult, "writeToFileCommit success: " + writeToFileCommitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToFileCommitSuccess) {
+                    writeToUiAppend(readResult, "writeToFileCommit was not successful, aborted");
+                    //return;
+                }
+
+                /**
+                 * part for aes application
+                 */
+
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "same workflow for AES keys");
+
+                byte[] aesAid = Utils.hexStringToByteArray("d3d2d7");
+                byte[] aesKey = new byte[16];
+                byte aesKeyNumberRW = 0;
+                byte aesKeyNumberR = 1;
+                byte aesKeyNumberW = 2;
+                byte aesNumberOfKeys = (byte) 0x83; // 3 AES keys
+                byte aesFileNumberCycle = (byte) 0x02;
+
+                // select the master file application
+                responseData = new byte[2];
+                selectMasterApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectMasterApplication result: " + selectMasterApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                authenticateMasterSuccess = authenticateApplicationDes(readResult, AID_Master_Key0_Number, AID_Master_Key0, false, responseData);
+                writeToUiAppend(readResult, "authenticateMasterApplication result: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateMasterSuccess) {
+                    writeToUiAppend(readResult, "the authenticationMaster was not successful, aborted");
+                    return;
+                }
+
+                // create the new application
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                createApplicationSuccess = createApplicationDes(readResult, aesAid, aesNumberOfKeys, responseData);
+                writeToUiAppend(readResult, "createApplication result: " + createApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createApplicationSuccess) {
+                    writeToUiAppend(readResult, "the createApplication was not successful, aborted");
+                    //return;
+                }
+
+                // select the application
+                responseData = new byte[2];
+                selectApplicationSuccess = selectApplicationDes(readResult, aesAid, responseData);
+                writeToUiAppend(readResult, "selectApplication result: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
+                }
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean authenticateAesApplicationSuccess = authenticateApplicationAes(readResult, aesKeyNumberRW, aesKey, true, responseData);
+                writeToUiAppend(readResult, "authenticateAesApplication result: " + authenticateAesApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateAesApplicationSuccess) {
+                    writeToUiAppend(readResult, "the authenticateAesApplication was not successful, aborted");
+                    //return;
+                }
+
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "*** authenticate the application using DESFireEV1 method ***");
+                boolean authenticateAesApplicationDfSuccess = false;
+                try {
+                    authenticateAesApplicationDfSuccess = authenticate(aesKey, aesKeyNumberRW, DESFireEV1.DesfireKeyType.AES);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+                writeToUiAppend(readResult, "authenticateAesApplicationDf result: " + authenticateAesApplicationDfSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateAesApplicationDfSuccess) {
+                    writeToUiAppend(readResult, "the authenticateAesApplicationDf was not successful, aborted");
+                    //return;
+                }
+
+                // create the cyclic file
+                responseData = new byte[2];
+                createCyclicFileSuccess = createCyclicFile(readResult, aesFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "createCyclicFile success: " + createCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "createCyclicFile was not successful, aborted");
+                    //return;
+                }
+
+                // write to the cyclic file
+                responseData = new byte[2];
+                writeToCyclicFileSuccess = writeToCyclicFile(readResult, aesFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "writeToCyclicFile success: " + writeToCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "writeToCyclicFile was not successful, aborted");
+                    //return;
+                }
+                // commit in cyclic file
+                responseData = new byte[2];
+                writeToFileCommitSuccess = commitWriteToFile(readResult, responseData);
+                writeToUiAppend(readResult, "writeToFileCommit success: " + writeToFileCommitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToFileCommitSuccess) {
+                    writeToUiAppend(readResult, "writeToFileCommit was not successful, aborted");
+                    //return;
+                }
+
+            }
+        });
+
+        btn21.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // auth with AES keys but encrypted
+
+                // first we setup a des-key secured application
+                byte[] responseData = new byte[2];
+
+                /**
+                 * part for aes application
+                 */
+
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "same workflow for AES keys");
+
+                byte[] aesAid = Utils.hexStringToByteArray("e3e2e7");
+                byte[] aesKey = new byte[16];
+                byte aesKeyNumberRW = 0;
+                byte aesKeyNumberR = 1;
+                byte aesKeyNumberW = 2;
+                byte aesNumberOfKeys = (byte) 0x83; // 3 AES keys
+                byte aesFileNumberCycle = (byte) 0x02;
+
+                // select the master file application
+                responseData = new byte[2];
+                boolean selectMasterApplicationSuccess = selectApplicationDes(readResult, AID_Master, responseData);
+                writeToUiAppend(readResult, "selectMasterApplication result: " + selectMasterApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean authenticateMasterSuccess = authenticateApplicationDes(readResult, AID_Master_Key0_Number, AID_Master_Key0, false, responseData);
+                writeToUiAppend(readResult, "authenticateMasterApplication result: " + authenticateMasterSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateMasterSuccess) {
+                    writeToUiAppend(readResult, "the authenticationMaster was not successful, aborted");
+                    return;
+                }
+
+                // create the new application
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean createApplicationSuccess = createApplicationDes(readResult, aesAid, aesNumberOfKeys, responseData);
+                writeToUiAppend(readResult, "createApplication result: " + createApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createApplicationSuccess) {
+                    writeToUiAppend(readResult, "the createApplication was not successful, aborted");
+                    //return;
+                }
+
+                // select the application
+                responseData = new byte[2];
+                boolean selectApplicationSuccess = selectApplicationDes(readResult, aesAid, responseData);
+                writeToUiAppend(readResult, "selectApplication result: " + selectApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!selectApplicationSuccess) {
+                    writeToUiAppend(readResult, "the selectApplication was not successful, aborted");
+                    return;
+                }
+
+                // authenticate
+                responseData = new byte[2];
+                // we set the rw + car rights to key 0 so we need to authenticate with key 0 first to proceed
+                boolean authenticateAesApplicationSuccess = authenticateApplicationAes(readResult, aesKeyNumberRW, aesKey, true, responseData);
+                writeToUiAppend(readResult, "authenticateAesApplication result: " + authenticateAesApplicationSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateAesApplicationSuccess) {
+                    writeToUiAppend(readResult, "the authenticateAesApplication was not successful, aborted");
+                    //return;
+                }
+
+                writeToUiAppend(readResult, "");
+                writeToUiAppend(readResult, "*** authenticate the application using DESFireEV1 method ***");
+                boolean authenticateAesApplicationDfSuccess = false;
+                try {
+                    authenticateAesApplicationDfSuccess = authenticate(aesKey, aesKeyNumberRW, DESFireEV1.DesfireKeyType.AES);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+                writeToUiAppend(readResult, "authenticateAesApplicationDf result: " + authenticateAesApplicationDfSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!authenticateAesApplicationDfSuccess) {
+                    writeToUiAppend(readResult, "the authenticateAesApplicationDf was not successful, aborted");
+                    //return;
+                }
+
+                // create the cyclic file - here with encrypted communication
+                responseData = new byte[2];
+                boolean createCyclicFileSuccess = createCyclicFileEncryptedCommunication(readResult, aesFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "createCyclicFile success: " + createCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!createCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "createCyclicFile was not successful, aborted");
+                    //return;
+                }
+
+                // write to the cyclic file
+                responseData = new byte[2];
+                boolean writeToCyclicFileSuccess = writeToCyclicFile(readResult, aesFileNumberCycle, responseData);
+                writeToUiAppend(readResult, "writeToCyclicFile success: " + writeToCyclicFileSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToCyclicFileSuccess) {
+                    writeToUiAppend(readResult, "writeToCyclicFile was not successful, aborted");
+                    //return;
+                }
+                // commit in cyclic file
+                responseData = new byte[2];
+                boolean writeToFileCommitSuccess = commitWriteToFile(readResult, responseData);
+                writeToUiAppend(readResult, "writeToFileCommit success: " + writeToFileCommitSuccess + " with response: " + Utils.bytesToHex(responseData));
+                if (!writeToFileCommitSuccess) {
+                    writeToUiAppend(readResult, "writeToFileCommit was not successful, aborted");
+                    //return;
+                }
+
+            }
+        });
+
 
     }
 
     /**
      * start section for ready to use commands
      */
+
+    /**
+     * section for authentication with aes keys, copied from DESFireEV1.java
+     */
+
+    /**
+     * Mutual authentication between PCD and PICC.
+     *
+     * @param key	the secret key (8 bytes for DES, 16 bytes for 3DES/AES and
+     * 				24 bytes for 3K3DES)
+     * @param keyNo	the key number
+     * @param type	the cipher
+     * @return		true for success
+     * @throws IOException
+     */
+    public boolean authenticate(byte[] key, byte keyNo, DESFireEV1.DesfireKeyType type) throws IOException {
+        if (!validateKey(key, type)) {
+            System.out.println("***DESFireEV1.java authenticate validateKey: " + com.github.skjolber.desfire.ev1.model.command.Utils.getHexString(key));
+            throw new IllegalArgumentException();
+        }
+        if (type != DESFireEV1.DesfireKeyType.AES) {
+            // remove version bits from Triple DES keys
+            setKeyVersion(key, 0, key.length, (byte) 0x00);
+        }
+
+        final byte[] iv0 = type == DESFireEV1.DesfireKeyType.AES ? new byte[16] : new byte[8];
+        byte[] apdu;
+        byte[] responseAPDU;
+
+        // 1st message exchange
+        apdu = new byte[7];
+        apdu[0] = (byte) 0x90;
+        switch (type) {
+            case DES:
+            case TDES:
+                //apdu[1] = (byte) DESFireEV1.Command.AUTHENTICATE_DES_2K3DES.getCode();
+                apdu[1] = (byte) 0x0A;
+                break;
+            case TKTDES:
+                //apdu[1] = (byte) DESFireEV1.Command.AUTHENTICATE_3K3DES.getCode();
+                apdu[1] = (byte) 0x1A;
+                break;
+            case AES:
+                //apdu[1] = (byte) DESFireEV1.Command.AUTHENTICATE_AES.getCode();
+                apdu[1] = (byte) 0xAA;
+                break;
+            default:
+                assert false : type;
+        }
+        apdu[4] = 0x01;
+        apdu[5] = keyNo;
+        //responseAPDU = transmit(apdu);
+
+        writeToUiAppend(readResult,printData("1st message exchange send", apdu));
+        responseAPDU = isoDep.transceive(apdu);
+        writeToUiAppend(readResult,printData("1st message exchange resp", responseAPDU));
+        //this.code = getSW2(responseAPDU);
+        //feedback(apdu, responseAPDU);
+        //if (getSW2(responseAPDU) != 0xAF) return false;
+
+        //byte[] responseData = getData(responseAPDU);
+        byte[] responseData = Arrays.copyOf(responseAPDU, responseAPDU.length - 2);
+        // step 3
+        //byte[] randB = recv(key, getData(responseAPDU), type, iv0);
+        byte[] randB = recv(key, responseData, type, iv0);
+        writeToUiAppend(readResult,"step 3");
+        writeToUiAppend(readResult,printData("randB", randB));
+        writeToUiAppend(readResult,printData("iv0", iv0));
+
+        if (randB == null)
+            return false;
+        byte[] randBr = rotateLeft(randB);
+        writeToUiAppend(readResult,printData("rotate left randB", randB));
+
+        byte[] randA = new byte[randB.length];
+
+        //fillRandom(randA);
+        // we are using a static randA
+        randA = Utils.hexStringToByteArray("000102030405060708090a0b0c0d0e0f");
+        writeToUiAppend(readResult,printData("randA", randA));
+
+        // step 3: encryption
+        writeToUiAppend(readResult, "encryption");
+        byte[] plaintext = new byte[randA.length + randBr.length];
+        System.arraycopy(randA, 0, plaintext, 0, randA.length);
+        System.arraycopy(randBr, 0, plaintext, randA.length, randBr.length);
+        writeToUiAppend(readResult, printData("plaintext randA|randB", plaintext));
+        byte[] iv1 = Arrays.copyOfRange(responseData,
+                responseData.length - iv0.length, responseData.length);
+        writeToUiAppend(readResult, printData("iv1", iv1));
+        byte[] ciphertext = send(key, plaintext, type, iv1);
+        if (ciphertext == null)
+            return false;
+        writeToUiAppend(readResult, printData("ciphertext", ciphertext));
+        // 2nd message exchange
+        writeToUiAppend(readResult,"2nd message exchange");
+        apdu = new byte[5 + ciphertext.length + 1];
+        apdu[0] = (byte) 0x90;
+        apdu[1] = (byte) 0xAF;
+        apdu[4] = (byte) ciphertext.length;
+        System.arraycopy(ciphertext, 0, apdu, 5, ciphertext.length);
+        //responseAPDU = transmit(apdu);
+        responseAPDU = isoDep.transceive(apdu);
+        writeToUiAppend(readResult,printData("2nd message exchange send", apdu));
+        writeToUiAppend(readResult,printData("2nd message exchange resp", responseAPDU));
+        //this.code = getSW2(responseAPDU);
+        //feedback(apdu, responseAPDU);
+        //if (getSW2(responseAPDU) != 0x00) return false;
+
+        // step 5
+        byte[] iv2 = Arrays.copyOfRange(ciphertext,
+                ciphertext.length - iv0.length, ciphertext.length);
+        writeToUiAppend(readResult, printData("iv2", iv2));
+        byte[] responseData2 = Arrays.copyOf(responseAPDU, responseAPDU.length - 2);
+        writeToUiAppend(readResult, printData("responseData2", responseData2));
+        byte[] randAr = recv(key, responseData2, type, iv2);
+        writeToUiAppend(readResult, printData("randAr", randAr));
+        //byte[] randAr = recv(key, getData(responseAPDU), type, iv2);
+
+        if (randAr == null)
+            return false;
+        byte[] randAr2 = rotateLeft(randA);
+        writeToUiAppend(readResult, printData("rotate left randAr", randAr2));
+        for (int i = 0; i < randAr2.length; i++)
+            if (randAr[i] != randAr2[i])
+                return false;
+        writeToUiAppend(readResult, "compare both randA values");
+        writeToUiAppend(readResult, printData("randA Original", randA));
+        writeToUiAppend(readResult, printData("randA Or. rot ", randAr2));
+        writeToUiAppend(readResult, printData("randAr Receivt", randAr));
+
+        // step 6
+        byte[] skey = generateSessionKey(randA, randB, type);
+        writeToUiAppend(readResult, printData("sessionKey", skey));
+
+        //this.ktype = type;
+        //this.kno = keyNo;
+        //this.iv = iv0;
+        //this.skey = skey;
+
+        return true;
+    }
+
+    /**
+     * DES/3DES mode of operation.
+     */
+    private enum DESMode {
+        SEND_MODE,
+        RECEIVE_MODE;
+    }
+
+    // Receiving data that needs decryption.
+    private static byte[] recv(byte[] key, byte[] data, DESFireEV1.DesfireKeyType type, byte[] iv) {
+        switch (type) {
+            case DES:
+            case TDES:
+                //return decrypt(key, data, DESFireEV1.DESMode.RECEIVE_MODE);
+            case TKTDES:
+                return TripleDES.decrypt(iv == null ? new byte[8] : iv, key, data);
+            case AES:
+                return AES.decrypt(iv == null ? new byte[16] : iv, key, data);
+            default:
+                return null;
+        }
+    }
+
+    // IV sent is the global one but it is better to be explicit about it: can be null for DES/3DES
+    // if IV is null, then it is set to zeros
+    // Sending data that needs encryption.
+    private static byte[] send(byte[] key, byte[] data, DESFireEV1.DesfireKeyType type, byte[] iv) {
+        switch (type) {
+            case DES:
+            case TDES:
+                //return decrypt(key, data, DESFireEV1.DESMode.SEND_MODE);
+            case TKTDES:
+                return TripleDES.encrypt(iv == null ? new byte[8] : iv, key, data);
+            case AES:
+                return AES.encrypt(iv == null ? new byte[16] : iv, key, data);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Generate the session key using the random A generated by the PICC and
+     * the random B generated by the PCD.
+     *
+     * @param randA	the random number A
+     * @param randB	the random number B
+     * @param type	the type of key
+     * @return		the session key
+     */
+    private static byte[] generateSessionKey(byte[] randA, byte[] randB, DESFireEV1.DesfireKeyType type) {
+        byte[] skey = null;
+
+        switch (type) {
+            case DES:
+                skey = new byte[8];
+                System.arraycopy(randA, 0, skey, 0, 4);
+                System.arraycopy(randB, 0, skey, 4, 4);
+                break;
+            case TDES:
+                skey = new byte[16];
+                System.arraycopy(randA, 0, skey, 0, 4);
+                System.arraycopy(randB, 0, skey, 4, 4);
+                System.arraycopy(randA, 4, skey, 8, 4);
+                System.arraycopy(randB, 4, skey, 12, 4);
+                break;
+            case TKTDES:
+                skey = new byte[24];
+                System.arraycopy(randA, 0, skey, 0, 4);
+                System.arraycopy(randB, 0, skey, 4, 4);
+                System.arraycopy(randA, 6, skey, 8, 4);
+                System.arraycopy(randB, 6, skey, 12, 4);
+                System.arraycopy(randA, 12, skey, 16, 4);
+                System.arraycopy(randB, 12, skey, 20, 4);
+                break;
+            case AES:
+                skey = new byte[16];
+                System.arraycopy(randA, 0, skey, 0, 4);
+                System.arraycopy(randB, 0, skey, 4, 4);
+                System.arraycopy(randA, 12, skey, 8, 4);
+                System.arraycopy(randB, 12, skey, 12, 4);
+                break;
+            default:
+                assert false : type;  // never reached
+        }
+
+        return skey;
+    }
+
+    /**
+     * section for authentication with aes keys
+     */
+
+    // if verbose = true all steps are printed out
+    private boolean authenticateApplicationAes(TextView logTextView, byte keyId, byte[] key, boolean verbose, byte[] response) {
+        try {
+            writeToUiAppend(logTextView, "authenticateApplicationAes for keyId " + keyId + " and key " + Utils.bytesToHex(key));
+            // do DES auth
+            //String getChallengeCommand = "901a0000010000";
+            //String getChallengeCommand = "9084000000"; // IsoGetChallenge
+
+            //byte[] getChallengeResponse = nfcA.transceive(Utils.hexStringToByteArray(getChallengeCommand));
+            //byte[] getChallengeResponse = nfcA.transceive(wrapMessage((byte) 0x1a, new byte[]{(byte) 0x01} ));
+            byte[] getChallengeResponse = isoDep.transceive(wrapMessage((byte) 0xaa, new byte[]{(byte) (keyId & 0xFF)}));
+            if (verbose)
+                writeToUiAppend(logTextView, printData("getChallengeResponse", getChallengeResponse)); // this 16 bytes long
+            // cf5e0ee09862d90391af
+            // 91 af at the end shows there is more data
+
+            byte[] challenge = Arrays.copyOf(getChallengeResponse, getChallengeResponse.length - 2);
+            if (verbose) writeToUiAppend(logTextView, printData("challengeResponse", challenge));
+
+            // Of course the rndA shall be a random number,
+            // but we will use a constant number to make the example easier.
+            byte[] rndA = Utils.hexStringToByteArray("000102030405060708090a0b0c0d0e0f");
+            if (verbose) writeToUiAppend(logTextView, printData("rndA", rndA));
+
+            // This is the default key for a blank AESFire card.
+            // defaultKey = 16 byte array = [0x00, ..., 0x00]
+            //byte[] defaultAESKey = Utils.hexStringToByteArray("00000000000000000000000000000000");
+            byte[] defaultAESKey = key.clone();
+            byte[] IV = new byte[16];
+
+            // Decrypt the challenge with default keybyte[] rndB = decrypt(challenge, defaultDESKey, IV);
+            byte[] rndB = decryptAes(challenge, defaultAESKey, IV);
+            if (verbose) writeToUiAppend(logTextView, printData("rndB", rndB));
+            // Rotate left the rndB byte[] leftRotatedRndB = rotateLeft(rndB);
+            byte[] leftRotatedRndB = rotateLeft(rndB);
+            if (verbose)
+                writeToUiAppend(logTextView, printData("leftRotatedRndB", leftRotatedRndB));
+            // Concatenate the RndA and rotated RndB byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
+            byte[] rndA_rndB = concatenate(rndA, leftRotatedRndB);
+            if (verbose) writeToUiAppend(logTextView, printData("rndA_rndB", rndA_rndB));
+
+            // Encrypt the bytes of the last step to get the challenge answer byte[] challengeAnswer = encrypt(rndA_rndB, defaultDESKey, IV);
+            IV = challenge;
+            byte[] challengeAnswer = encryptAes(rndA_rndB, defaultAESKey, IV);
+            IV = Arrays.copyOfRange(challengeAnswer, 16, 32);
+            if (verbose) {
+                writeToUiAppend(logTextView, printData("challengeAnswer", challengeAnswer));
+                writeToUiAppend(logTextView, printData("new IV         ", IV));
+            }
+
+                /*
+                    Build and send APDU with the answer. Basically wrap the challenge answer in the APDU.
+                    The total size of apdu (for this scenario) is 22 bytes:
+                    > 0x90 0xAF 0x00 0x00 0x10 [16 bytes challenge answer] 0x00
+                */
+            byte[] challengeAnswerAPDU = new byte[38]; // old 22
+            challengeAnswerAPDU[0] = (byte) 0x90; // CLS
+            challengeAnswerAPDU[1] = (byte) 0xAF; // INS
+            challengeAnswerAPDU[2] = (byte) 0x00; // p1
+            challengeAnswerAPDU[3] = (byte) 0x00; // p2
+            challengeAnswerAPDU[4] = (byte) 0x20; // data length: 32 bytes
+            challengeAnswerAPDU[challengeAnswerAPDU.length - 1] = (byte) 0x00;
+            System.arraycopy(challengeAnswer, 0, challengeAnswerAPDU, 5, challengeAnswer.length);
+            if (verbose)
+                writeToUiAppend(logTextView, printData("challengeAnswerAPDU", challengeAnswerAPDU));
+
+            /*
+             * Sending the APDU containing the challenge answer.
+             * It is expected to be return 18 bytes [rndA from the Card] + 9100
+             */
+            byte[] challengeAnswerResponse = isoDep.transceive(challengeAnswerAPDU);
+            // response = channel.transmit(new CommandAPDU(challengeAnswerAPDU));
+            if (verbose)
+                writeToUiAppend(logTextView, printData("challengeAnswerResponse", challengeAnswerResponse));
+            byte[] challengeAnswerResp = Arrays.copyOf(challengeAnswerResponse, getChallengeResponse.length - 2);
+            if (verbose)
+                writeToUiAppend(logTextView, printData("challengeAnswerResp", challengeAnswerResp));
+
+            /*
+             * At this point, the challenge was processed by the card. The card decrypted the
+             * rndA rotated it and sent it back.
+             * Now we need to check if the RndA sent by the Card is valid.
+             */// encrypted rndA from Card, returned in the last step byte[] encryptedRndAFromCard = response.getData();
+
+            // Decrypt the rnd received from the Card.byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
+            //byte[] rotatedRndAFromCard = decrypt(encryptedRndAFromCard, defaultDESKey, IV);
+            byte[] rotatedRndAFromCard = decryptAes(challengeAnswerResp, defaultAESKey, IV);
+            if (verbose)
+                writeToUiAppend(logTextView, printData("rotatedRndAFromCard", rotatedRndAFromCard));
+
+            // As the card rotated left the rndA,// we shall un-rotate the bytes in order to get compare it to our original rndA.byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
+            byte[] rndAFromCard = rotateRight(rotatedRndAFromCard);
+            if (verbose) writeToUiAppend(logTextView, printData("rndAFromCard", rndAFromCard));
+            writeToUiAppend(logTextView, "********** AUTH RESULT **********");
+            //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+            if (Arrays.equals(rndA, rndAFromCard)) {
+                writeToUiAppend(logTextView, "Authenticated");
+                return true;
+            } else {
+                writeToUiAppend(logTextView, "Authentication failed");
+                return false;
+                //System.err.println(" ### Authentication failed. ### ");
+                //log("rndA:" + toHexString(rndA) + ", rndA from Card: " + toHexString(rndAFromCard));
+            }
+            //writeToUiAppend(logTextView, "********** AUTH RESULT END **********");
+            //return false;
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "authenticateApplicationAes transceive failed: " + e.getMessage());
+            writeToUiAppend(logTextView, "authenticateApplicationAes transceive failed: " + Arrays.toString(e.getStackTrace()));
+        }
+        //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
+        return false;
+
+        // todo set global IV to zero's
+
+    }
+
+
+
 
     /**
      * section for authentication with DES
@@ -1843,12 +2500,14 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
             //return false;
         } catch (Exception e) {
             //throw new RuntimeException(e);
-            writeToUiAppend(logTextView, "authenticateApplicationDes tranceive failed: " + e.getMessage());
-            writeToUiAppend(logTextView, "authenticateApplicationDes tranceive failed: " + Arrays.toString(e.getStackTrace()));
+            writeToUiAppend(logTextView, "authenticateApplicationDes transceive failed: " + e.getMessage());
+            writeToUiAppend(logTextView, "authenticateApplicationDes transceive failed: " + Arrays.toString(e.getStackTrace()));
         }
         //System.arraycopy(createApplicationResponse, 0, response, 0, createApplicationResponse.length);
         return false;
     }
+
+
 
     /**
      * section for application handling
@@ -1881,7 +2540,7 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
             }
         } catch (Exception e) {
             //throw new RuntimeException(e);
-            writeToUiAppend(logTextView, "createApplicationDes tranceive failed: " + e.getMessage());
+            writeToUiAppend(logTextView, "createApplicationAes transceive failed: " + e.getMessage());
             return false;
         }
     }
@@ -2366,8 +3025,86 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                  */
         byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
         // here we are using key 1 for every access !
-        byte accessRightsRwCar = (byte) 0x11; // Read&Write Access & ChangeAccessRights
-        byte accessRightsRW = (byte) 0x11; // Read Access & Write Access
+        //byte accessRightsRwCar = (byte) 0x11; // Read&Write Access & ChangeAccessRights
+        //byte accessRightsRW = (byte) 0x11; // Read Access & Write Access
+
+        // here we are using key 0 for every access !
+        byte accessRightsRwCar = (byte) 0x00; // Read&Write Access & ChangeAccessRights
+        byte accessRightsRW = (byte) 0x00; // Read Access & Write Access
+
+                /*
+                There are four different Access Rights (2 bytes for each file) stored for each file within
+                each application:
+                - Read Access
+                - Write Access
+                - Read&Write Access
+                - ChangeAccessRights
+                 */
+
+        // create a value file in the new application: fileNo=6, cs=3
+        //ar1 = 0x00;  // RW|CAR
+        //ar2 = 0x00;  // R|W
+
+        /* @param payload	10-byte array with the following contents:
+         * 					<br>file number (1 byte),
+         * 					<br>communication settings (1 byte),
+         * 					<br>access rights (2 bytes: RW||CAR||R||W),
+         * 					<br>size of a single record size (3 bytes LSB),
+         * 					<br>maximum amount of records (3 bytes LSB)
+         * @return			{@code true} on success, {@code false} otherwise
+         * @throws IOException
+         */
+
+        byte[] createCyclicFileParameters = new byte[10]; // just to show the length
+        createCyclicFileParameters = new byte[]{
+                fileNumber, commSettingsByte, accessRightsRwCar, accessRightsRW,
+                RECORD_SIZE, 0, 0,   // size of record fixed to dec 32
+                NUMBER_OF_RECORDS, 0, 0 // maximum amount of records, fixed to dec 6
+        };
+
+        writeToUiAppend(logTextView, printData("createCyclicFileParameters", createCyclicFileParameters));
+        byte[] createCyclicFileResponse = new byte[0];
+        try {
+            createCyclicFileResponse = isoDep.transceive(wrapMessage(createCyclicFileCommand, createCyclicFileParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        System.arraycopy(returnStatusBytes(createCyclicFileResponse), 0, response, 0, 2);
+        writeToUiAppend(logTextView, printData("createCyclicFileResponse", createCyclicFileResponse));
+        if (checkDuplicateError(createCyclicFileResponse)) {
+            writeToUiAppend(logTextView, "the file was not created as it already exists, proceed");
+            return true;
+        }
+        if (checkResponse(createCyclicFileResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private boolean createCyclicFileEncryptedCommunication(TextView logTextView, byte fileNumber, byte[] response) {
+        // create the CyclicRecordFile
+        byte createCyclicFileCommand = (byte) 0xc0;
+        final byte RECORD_SIZE = (byte) 0x20; // 32 bytes
+        final byte NUMBER_OF_RECORDS = (byte) 0x06;
+        byte commSettingsByte = (byte) 0x03; // encrypted communication
+                /*
+                M0775031 DESFIRE
+                Plain Communication = 0;
+                Plain communication secured by DES/3DES MACing = 1;
+                Fully DES/3DES enciphered communication = 3;
+                 */
+        byte[] accessRights = new byte[]{(byte) 0xee, (byte) 0xee}; // should mean plain/free access without any keys
+        // here we are using key 1 for every access !
+        //byte accessRightsRwCar = (byte) 0x11; // Read&Write Access & ChangeAccessRights
+        //byte accessRightsRW = (byte) 0x11; // Read Access & Write Access
+
+        // here we are using key 0 for every access !
+        byte accessRightsRwCar = (byte) 0x00; // Read&Write Access & ChangeAccessRights
+        byte accessRightsRW = (byte) 0x00; // Read Access & Write Access
+
                 /*
                 There are four different Access Rights (2 bytes for each file) stored for each file within
                 each application:
@@ -3102,6 +3839,10 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
         return hexString.toString();
     }
 
+    /**
+     * section for DES encryption
+     */
+
     private static byte[] decrypt(byte[] data, byte[] key, byte[] IV) throws Exception {
         Cipher cipher = getCipher(Cipher.DECRYPT_MODE, key, IV);
         return cipher.doFinal(data);
@@ -3112,10 +3853,30 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
         return cipher.doFinal(data);
     }
 
-
     private static Cipher getCipher(int mode, byte[] key, byte[] IV) throws Exception {
         Cipher cipher = Cipher.getInstance("DES/CBC/NoPadding");
         SecretKeySpec keySpec = new SecretKeySpec(key, "DES");
+        IvParameterSpec algorithmParamSpec = new IvParameterSpec(IV);
+        cipher.init(mode, keySpec, algorithmParamSpec);
+        return cipher;
+    }
+
+    /**
+     * section for AES encryption
+     */
+
+    private static byte[] decryptAes(byte[] data, byte[] key, byte[] IV) throws Exception {
+        Cipher cipher = getCipherAes(Cipher.DECRYPT_MODE, key, IV);
+        return cipher.doFinal(data);
+    }
+
+    private static byte[] encryptAes(byte[] data, byte[] key, byte[] IV) throws Exception {
+        Cipher cipher = getCipherAes(Cipher.ENCRYPT_MODE, key, IV);
+        return cipher.doFinal(data);
+    }
+    private static Cipher getCipherAes(int mode, byte[] key, byte[] IV) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/CBC/NoPadding");
+        SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
         IvParameterSpec algorithmParamSpec = new IvParameterSpec(IV);
         cipher.init(mode, keySpec, algorithmParamSpec);
         return cipher;
