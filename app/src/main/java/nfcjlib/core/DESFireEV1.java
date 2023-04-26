@@ -1349,7 +1349,11 @@ public class DESFireEV1 {
 	 */
 
 	public byte[] readRecords(byte fileNumber, int offset, int length) throws Exception {
-		return read(fileNumber, offset, length, Command.READ_RECORDS.getCode());
+
+		// this is a modified version to read only 1 record
+		return readRecMod(fileNumber, 0, Command.READ_RECORDS.getCode());
+
+		//return read(fileNumber, offset, length, Command.READ_RECORDS.getCode());
 	}
 
 	/**
@@ -1924,6 +1928,65 @@ public class DESFireEV1 {
 		feedback(apdu, responseAPDU);
 
 		return postprocess(baos.toByteArray(), responseLength, cs);
+	}
+
+	/**
+	 * This is a modified version, the old version tries to read all data but that fails
+	 * This version is reading just ONE record defined by recordNumber
+	 * @param fileNumber
+	 * @param recordNumber
+	 * @param cmd
+	 * @return
+	 * @throws Exception
+	 */
+	//private byte[] readRecMod(byte fileNumber, int offset, int length, int cmd) throws Exception {
+	private byte[] readRecMod(byte fileNumber, int recordNumber, int cmd) throws Exception {
+
+		byte[] payload = new CommandBuilder(7).bytes1(fileNumber).bytes3(recordNumber).bytes3Lsb(1).bytes();
+
+		// record files: file settings could be cached,
+		// returning an erroneous number of current records
+		DesfireFile settings;
+		if (cmd == Command.READ_RECORDS.getCode()) {
+			settings = updateFileSett(fileNumber, true);
+		} else {
+			settings = updateFileSett(fileNumber, false);
+		}
+
+		DesfireFileCommunicationSettings cs = getFileCommSett(fileNumber, true, false, true, false);
+		if (cs == null)
+			return null;
+
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		//int responseLength = findResponseLength(settings, offset, length, cmd);
+		//int responseLength = findResponseLength(settings, 1, 1, cmd);
+
+		byte[] apdu = new byte[13];
+		apdu[0] = (byte) 0x90;
+		apdu[1] = (byte) cmd;
+		apdu[2] = 0x00;
+		apdu[3] = 0x00;
+		apdu[4] = 0x07;
+		System.arraycopy(payload, 0, apdu, 5, 7);
+		apdu[12] = 0x00;
+
+		// todo remove line
+		System.out.println("*** read comm: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(apdu));
+
+		preprocess(apdu, DesfireFileCommunicationSettings.PLAIN);
+
+		byte[] responseAPDU = adapter.sendAdpuChain(apdu);
+		// todo remove line
+		System.out.println("*** read resp: " + de.androidcrypto.nfcmifaredesfireplayground.Utils.bytesToHex(responseAPDU));
+
+		feedback(apdu, responseAPDU);
+		int responseLength = responseAPDU.length; // new but wrong for enciphered/enmaced comms
+		System.out.println("*** read responseLength: " + responseLength);
+		int responseLengthNew = findResponseLength(settings, 0, 1, cmd);
+		System.out.println("*** calc responseLength: " + responseLengthNew);
+
+		return postprocess(responseAPDU, responseLengthNew, cs);
+		//return postprocess(baos.toByteArray(), responseLength, cs);
 	}
 
 	/* Support method for read(). Find length of just the data. Retrieved

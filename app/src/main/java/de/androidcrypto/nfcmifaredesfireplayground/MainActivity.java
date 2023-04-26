@@ -1358,11 +1358,14 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     writeToUiAppend(readResult, "writeCycCommit: " + writeCycCommit + " response: " + Utils.bytesToHex(responseData));
 
                     // now desfire method to read
-                    byte[] dataRead = desfire.readData(fileNumber, 0, 1);
+                    /*
+                    byte[] dataRead = desfire.readData(fileNumber, 0, 0);
                     writeToUiAppend(readResult, printData("dataRead", dataRead));
                     if (dataRead != null) {
                         writeToUiAppend(readResult, new String(dataRead, StandardCharsets.UTF_8));
                     }
+
+                     */
                     // *** read comm: 90 bd 0000 07 01 00000000002000
                     // my manua comm: 90 bb 0000 07 04 04000001000000
 
@@ -1372,8 +1375,9 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     if (dataRead2 != null) {
                         writeToUiAppend(readResult, new String(dataRead2, StandardCharsets.UTF_8));
                     }
-                    // read comm:     90 bb 0000 07 01 00000000002000
-                    // my manua comm: 90 bb 0000 07 04 04000001000000
+                    // read comm:     90 bb 0000 07 01 000000000020 00
+                    // 1 record:      90 BB 0000 07 01 000000000001 00
+                    // my manua comm: 90 bb 0000 07 04 040000010000 00
 
 
                     /// my method
@@ -2428,7 +2432,14 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
             //                                 | record number
             //                                        | number of records
             // read comm:     90 bb 0000 07 01 000000 000020 00
+            // 1 record:      90 BB 0000 07 01 000000 000001 00
+            //                90 BB 00 0007 01 000000 000001 00
+
             // my manua comm: 90 bb 0000 07 04 040000 010000 00
+
+
+
+
 
             readFileParameters[0] = fileNumber;
             System.arraycopy(recordNumber, 0, readFileParameters, 1, 3);
@@ -2475,6 +2486,48 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
             return false;
         }
     }
+
+    private byte[] getFileSettingsRecord(TextView logTextView, byte fileNumber, byte[] response) {
+        byte getFileSettingsCommand = (byte) 0xf5;
+        byte[] getFileSettingsParameters = new byte[1];
+        getFileSettingsParameters[0] = fileNumber;
+        byte[] getFileSettingsResponse;
+        try {
+            getFileSettingsResponse = isoDep.transceive(wrapMessage(getFileSettingsCommand, getFileSettingsParameters));
+        } catch (Exception e) {
+            //throw new RuntimeException(e);
+            writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
+            return false;
+        }
+        writeToUiAppend(logTextView, printData("getFileSettingsResponse", getFileSettingsResponse));
+        System.arraycopy(returnStatusBytes(getFileSettingsResponse), 0, response, 0, 2);
+        if (checkResponse(getFileSettingsResponse)) {
+            return true;
+        } else {
+            return false;
+        }
+
+
+
+        byte[] apdu = new byte[7];
+        apdu[0] = (byte) 0x90;
+        apdu[1] = getFileSettingsCommand;
+        apdu[2] = 0x00;
+        apdu[3] = 0x00;
+        apdu[4] = 0x01;
+        apdu[5] = (byte) fileNumber;
+        apdu[6] = 0x00;
+
+
+
+
+
+        return null;
+    }
+
+
+
+
 
     // THIS IS NOT WORKING BECAUSE OF MISSING ENCRYPTION !!!
     private boolean changeApplicationKeyDes(TextView logTextView, byte keyNumber, byte[] newKey, byte[] oldKey, byte[] response) {

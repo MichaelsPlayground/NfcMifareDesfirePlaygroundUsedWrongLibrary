@@ -27,6 +27,21 @@ public class CommandBuilder {
 		
 		return this;
 	}
+
+	// added
+	public CommandBuilder bytes3Lsb(int value) {
+		command[offset] = (byte) ((value >>> 0) & 0xFF);
+		command[offset + 1] = (byte) ((value >>> 8) & 0xFF);
+		command[offset + 2] = (byte) ((value >>> 16) & 0xFF);
+
+		//command[offset] = (byte) ((value >>> 16) & 0xFF);
+		//command[offset + 1] = (byte) ((value >>> 8) & 0xFF);
+		//command[offset + 2] = (byte) ((value >>> 0) & 0xFF);
+
+		offset += 3;
+
+		return this;
+	}
 	
 	public byte[] bytes() {
 		return command;
