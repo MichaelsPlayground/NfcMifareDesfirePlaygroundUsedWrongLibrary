@@ -1351,11 +1351,39 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
  */
 
                     // write to cyclic file with own method
+                    writeToUiAppend(readResult,"");
+                    writeToUiAppend(readResult, "write to Cyclic Record File own");
                     byte[] responseData = new byte[2];
                     boolean writeCyc = writeToCyclicFile(readResult, fileNumber, responseData);
                     writeToUiAppend(readResult, "writeCyc: " + writeCyc + " response: " + Utils.bytesToHex(responseData));
                     boolean writeCycCommit = commitWriteToFile(readResult, responseData);
                     writeToUiAppend(readResult, "writeCycCommit: " + writeCycCommit + " response: " + Utils.bytesToHex(responseData));
+
+                    // write to cyclic file desfire
+                    writeToUiAppend(readResult,"");
+                    writeToUiAppend(readResult, "write to Cyclic Record File DesfireEV1");
+                    //byte[] writeCycPayload = new byte[1];
+                    byte[] offsetZero = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // write to the beginning
+                    byte[] dataLength;
+                    String contentString = "Entry from " + Utils.getTimestamp(); // timestamp is 19 characters long
+                    int contentLengthInt = contentString.length();
+                    // todo be more universal with this. The created record size is 32 so this data is fitting into one record
+                    byte[] contentLength = new byte[]{(byte) (contentLengthInt & 0xFF), (byte) 0x00, (byte) 0x00};
+                    byte[] content = contentString.getBytes(StandardCharsets.UTF_8);
+                    byte[] writeFileParameters = new byte[(contentLengthInt + 7)];
+                    writeFileParameters[0] = fileNumber;
+                    System.arraycopy(offsetZero, 0, writeFileParameters, 1, 3);
+                    System.arraycopy(contentLength, 0, writeFileParameters, 4, 3);
+                    System.arraycopy(content, 0, writeFileParameters, 7, contentLengthInt);
+                    writeToUiAppend(readResult, printData("writeFileParameters DesfireEV1", writeFileParameters));
+                    boolean writeCycDesfire = desfire.writeRecord(writeFileParameters);
+                    if (writeCycDesfire) {
+                        writeToUiAppend(readResult, "writeCycDesfire was successful");
+                    } else {
+                        writeToUiAppend(readResult, "writeCycDesfire was NOT successful");
+                    }
+
+
 
                     // now desfire method to read
                     /*
@@ -1370,6 +1398,8 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     // my manua comm: 90 bb 0000 07 04 04000001000000
 
                     // now desfire method to read second try
+                    writeToUiAppend(readResult,"");
+                    writeToUiAppend(readResult, "write to Cyclic Record File DesfireEV1");
                     byte[] dataRead2 = desfire.readRecords(fileNumber, 0, 1);
                     writeToUiAppend(readResult, printData("dataRead2", dataRead2));
                     if (dataRead2 != null) {
@@ -1382,6 +1412,8 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
 
                     /// my method
                     // define some data
+                    writeToUiAppend(readResult,"");
+                    writeToUiAppend(readResult, "write to Cyclic Record File own");
                     byte[] recordNumber = new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00}; // record 0 is the youngest record
                     byte[] numberOfRecordsMy = new byte[]{(byte) 0x01, (byte) 0x00, (byte) 0x00}; // read just one record
                     byte[] readDataMy = readFromCyclicFile(readResult, fileNumber, recordNumber, numberOfRecordsMy, responseData, true);
@@ -1391,6 +1423,19 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     byte[] readDataMy2 = readFromCyclicFile(readResult, fileNumber, recordNumber, numberOfRecordsMy2, responseData, true);
                     writeToUiAppend(readResult, printData("readDataMy2", readDataMy2));
 
+                    // get the file settings for the new file
+                    responseData = new byte[2];
+                    byte[] fileSettingsRecord = getFileSettingsRecord(readResult, fileNumber, responseData);
+                    writeToUiAppend(readResult, printData("fileSettingsRecord", fileSettingsRecord) + " with response: " + Utils.bytesToHex(responseData));
+                    if (!checkResponse(fileSettingsRecord)) {
+                        writeToUiAppend(readResult, "the fileSettingsRecord was not successful, aborted");
+                        return;
+                    }
+                    byte[] fileSettingsData = Arrays.copyOf(fileSettingsRecord, fileSettingsRecord.length - 2);
+                    if (fileSettingsData.length == 13) {
+                        FileSettingRecordModel fsrm = new FileSettingRecordModel(fileNumber, fileSettingsData);
+                        writeToUiAppend(readResult, fsrm.dumpFileSizes());
+                    }
 
                 } catch (IOException e) {
                     //throw new RuntimeException(e);
@@ -1454,7 +1499,7 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
                     // create application
                     byte[] responseData = new byte[2];
                     //boolean createApplication = createApplicationDes(readResult, aid, numberOfKeys, responseData);
-                    boolean createApplication = createApplicationAes(readResult, aid, numberOfKeysAes, responseData);
+                    boolean createApplication = createApplicationAes(readResult, aid, numberOfKeysAes, responseData); // numberOfKeysAes is 0x8x - 8 means AES, 4 means TKTDES
 
                     writeToUiAppend(readResult, "createApplication: " + createApplication + " response: " + Utils.bytesToHex(responseData));
 
@@ -1483,12 +1528,26 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
 
                     // write to standard file
                     responseData = new byte[2];
-                    boolean writeStandardFileSuccess = writeToStandardFile(readResult, DesStandardFileFileNumber1, dataToWrite, responseData);
+                    boolean writeStandardFileSuccess = writeToStandardFile(readResult, aesFileNumberStandard, dataToWrite, responseData);
                     writeToUiAppend(readResult, "writeStandardFile result: " + writeStandardFileSuccess + " with response: " + Utils.bytesToHex(responseData));
                     if (!writeStandardFileSuccess) {
                         writeToUiAppend(readResult, "the writeStandardFile was not successful, aborted");
                         return;
                     }
+
+
+
+
+
+                    // get the file settings for the new file
+                    responseData = new byte[2];
+                    byte[] fileSettingsRecord = getFileSettingsRecord(readResult, DesStandardFileFileNumber1, responseData);
+                    writeToUiAppend(readResult, printData("fileSettingsRecord", fileSettingsRecord) + " with response: " + Utils.bytesToHex(responseData));
+                    if (!checkResponse(fileSettingsRecord)) {
+                        writeToUiAppend(readResult, "the fileSettingsRecord was not successful, aborted");
+                        return;
+                    }
+                    byte[] fileSettingsData = Arrays.copyOf(fileSettingsRecord, fileSettingsRecord.length - 2);
 
 
 
@@ -2497,37 +2556,16 @@ payloadCyclicValueFile    length: 10 data: 01000012200000040000
         } catch (Exception e) {
             //throw new RuntimeException(e);
             writeToUiAppend(logTextView, "tranceive failed: " + e.getMessage());
-            return false;
+            return null;
         }
         writeToUiAppend(logTextView, printData("getFileSettingsResponse", getFileSettingsResponse));
         System.arraycopy(returnStatusBytes(getFileSettingsResponse), 0, response, 0, 2);
         if (checkResponse(getFileSettingsResponse)) {
-            return true;
+            return getFileSettingsResponse;
         } else {
-            return false;
+            return null;
         }
-
-
-
-        byte[] apdu = new byte[7];
-        apdu[0] = (byte) 0x90;
-        apdu[1] = getFileSettingsCommand;
-        apdu[2] = 0x00;
-        apdu[3] = 0x00;
-        apdu[4] = 0x01;
-        apdu[5] = (byte) fileNumber;
-        apdu[6] = 0x00;
-
-
-
-
-
-        return null;
     }
-
-
-
-
 
     // THIS IS NOT WORKING BECAUSE OF MISSING ENCRYPTION !!!
     private boolean changeApplicationKeyDes(TextView logTextView, byte keyNumber, byte[] newKey, byte[] oldKey, byte[] response) {

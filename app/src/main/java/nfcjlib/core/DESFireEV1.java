@@ -1818,11 +1818,15 @@ public class DESFireEV1 {
 	private DesfireFileCommunicationSettings getFileCommSett(byte fileNo, boolean rw, boolean car, boolean r, boolean w) throws Exception {
 		
 		DesfireFile fileSett = updateFileSett(fileNo, false);
-
+		// todo remove sout
+		System.out.println("*** getFileCommSett");
 		if (rw) {
+			System.out.println("** if rw");
 			if(fileSett.isReadWriteAccess(fileNo)) {
+				System.out.println("*** if(fileSett.isReadWriteAccess(fileNo))");
 				return fileSett.getCommunicationSettings();
 			} else if (fileSett.isFreeReadWriteAccess()) {
+				System.out.println("*** } else if (fileSett.isFreeReadWriteAccess()) {");
 				return DesfireFileCommunicationSettings.PLAIN;
 			}
 		}
@@ -1850,7 +1854,7 @@ public class DESFireEV1 {
 				return DesfireFileCommunicationSettings.PLAIN;
 			}
 		}
-
+		System.out.println("*** getFileCommSett return NULL");
 		return null;
 	}
 
@@ -2035,9 +2039,13 @@ public class DESFireEV1 {
 
 	/* Support method for writeData/writeRecord. */
 	private boolean write(byte[] payload, byte cmd) throws Exception {
+		// todo remove sout lines
+		System.out.println("*** analyze write cmd: " + (byte) cmd + " payload: " + Utils.getHexString(payload));
 		DesfireFileCommunicationSettings cs = getFileCommSett(payload[0], true, false, false, true);
-		if (cs == null)
+		if (cs == null) {
+			System.out.println("*** cs == null, return false");
 			return false;
+		}
 
 		byte[] apdu;
 		byte[] fullApdu = new byte[6 + payload.length];
@@ -2047,9 +2055,9 @@ public class DESFireEV1 {
 		System.arraycopy(payload, 0, fullApdu, 5, payload.length);
 
 		fullApdu = preprocess(fullApdu, 7, cs);  // 7 = 1+3+3 (keyNo+off+len)
-		
+		System.out.println("*** fullApdu: " + Utils.getHexString(fullApdu));
 		byte[] responseAPDU = adapter.sendAdpuChain(fullApdu);
-		
+		System.out.println("*** responseAPDU: " + Utils.getHexString(responseAPDU));
 		return postprocess(responseAPDU, DesfireFileCommunicationSettings.PLAIN) != null;
 	}
 
