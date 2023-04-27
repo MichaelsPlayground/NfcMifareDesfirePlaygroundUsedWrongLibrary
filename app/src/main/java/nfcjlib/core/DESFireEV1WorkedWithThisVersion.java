@@ -49,7 +49,7 @@ import nfcjlib.core.util.TripleDES;
  * @author	Daniel Andrade
  * @version	9.9.2013, 0.4
  */
-public class DESFireEV1 {
+public class DESFireEV1WorkedWithThisVersion {
 
 	public static final byte APPLICATION_CRYPTO_DES = 0x00;
 	public static final byte APPLICATION_CRYPTO_3K3DES = 0x40;
@@ -57,7 +57,7 @@ public class DESFireEV1 {
 
 	public static final int MAX_FILE_COUNT = 32;
 
-	private static final String TAG = DESFireEV1.class.getName();
+	private static final String TAG = DESFireEV1WorkedWithThisVersion.class.getName();
 
 	/** A file/key number that does not exist. */
 	private final static byte FAKE_NO = -1;
@@ -77,7 +77,7 @@ public class DESFireEV1 {
 	// cached file settings
 	private DesfireFile[] fileSettings = new DesfireFile[MAX_FILE_COUNT];
 
-	public DESFireEV1() {
+	public DESFireEV1WorkedWithThisVersion() {
 		reset();
 		aid = new byte[3];
 	}
@@ -2453,7 +2453,7 @@ this try 2                      903D 000000 01 000000 050000 68656C6C6F00
 		 * @return			the session key on success, or {@code null} on error
 		 * @throws IOException 
 		 */
-		public static byte[] runAll(DESFireEV1 desfire, byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
+		public static byte[] runAll(DESFireEV1WorkedWithThisVersion desfire, byte[] key, byte keyNo, DesfireKeyType type) throws IOException {
 			byte[] randBe = start(desfire, keyNo, type);
 			if (randBe == null)
 				return null;
@@ -2497,7 +2497,7 @@ this try 2                      903D 000000 01 000000 050000 68656C6C6F00
 		 * @return			the enciphered random number B, or {@code null} on error
 		 * @throws IOException 
 		 */
-		public static byte[] start(DESFireEV1 desfire, byte keyNo, DesfireKeyType type) throws IOException {
+		public static byte[] start(DESFireEV1WorkedWithThisVersion desfire, byte keyNo, DesfireKeyType type) throws IOException {
 			byte[] apdu = new byte[7];
 			apdu[0] = (byte) 0x90;
 			switch (type) {
@@ -2601,7 +2601,7 @@ this try 2                      903D 000000 01 000000 050000 68656C6C6F00
 		 * @return			the enciphered rotated random number A, or {@code null} otherwise 
 		 * @throws IOException 
 		 */
-		public static byte[] exchangeSecondMsg(DESFireEV1 desfire, byte[] randABre) throws IOException {
+		public static byte[] exchangeSecondMsg(DESFireEV1WorkedWithThisVersion desfire, byte[] randABre) throws IOException {
 			byte[] apdu = new byte[5 + randABre.length + 1];
 			apdu[0] = (byte) 0x90;
 			apdu[1] = (byte) 0xAF;
